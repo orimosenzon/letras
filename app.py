@@ -67,5 +67,16 @@ def api_search():
 
 
 
+@app.route("/api/debug/credits")
+def debug_credits():
+    title = request.args.get("title", "").strip()
+    if not title:
+        return jsonify({"error": "no title"}), 400
+    from transcriber import _fetch_credits, _clean_title
+    cleaned = _clean_title(title)
+    result = _fetch_credits(title)
+    return jsonify({"input": title, "cleaned": cleaned, "result": result})
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5001, threaded=True)
