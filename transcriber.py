@@ -91,14 +91,15 @@ def process_url(url: str, title: str = "", on_stage=None):
         stage("cached")
         with open(transcript_path) as f:
             cached = json.load(f)
-        # Backfill credits if missing
-        if not cached.get("lyricist") and not cached.get("composer") and not cached.get("performer"):
+        # Backfill credits if missing or from old search logic (credits_version < 2)
+        if cached.get("credits_version", 1) < 2:
             credits = _fetch_credits(cached.get("title", title))
             cached["lyricist"]  = credits.get("lyricist")
             cached["composer"]  = credits.get("composer")
             cached["arranger"]  = credits.get("arranger")
             cached["performer"] = credits.get("performer")
             cached["lang"] = _detect_language(_lyrics_text(cached.get("segments", [])))
+            cached["credits_version"] = 2
             with open(transcript_path, "w") as f:
                 json.dump(cached, f, ensure_ascii=False)
         return cached
@@ -126,6 +127,7 @@ def process_url(url: str, title: str = "", on_stage=None):
         "arranger":  credits.get("arranger"),
         "performer": credits.get("performer"),
         "lang": lang,
+        "credits_version": 2,
     }
     with open(transcript_path, "w") as f:
         json.dump(data, f, ensure_ascii=False)
