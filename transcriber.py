@@ -13,6 +13,7 @@ import glob as glob_mod
 import threading
 import urllib.request
 import urllib.parse
+import concurrent.futures
 import yt_dlp
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -423,16 +424,17 @@ def _mymemory_translate(text: str, source: str, target: str) -> str:
 def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
     """Translate segment texts using MyMemory free API. Returns list of translated strings."""
     src = source_lang or "auto"
-    results = []
-    for seg in segments:
-        text = seg["text"].strip()
+    texts = [seg["text"].strip() for seg in segments]
+
+    def translate_one(text):
         if not text:
-            results.append("")
-            continue
+            return ""
         try:
-            results.append(_mymemory_translate(text, src, target_lang))
+            return _mymemory_translate(text, src, target_lang)
         except Exception:
-            results.append(text)
-    return results
+            return text
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        return list(executor.map(translate_one, texts))
 
 
