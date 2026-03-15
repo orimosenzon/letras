@@ -403,27 +403,34 @@ LANG_NAMES = {
 }
 
 
-def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
-    """Translate segment texts using Claude Haiku. Returns list of translated strings."""
-    import anthropic
-    lines = [seg["text"] for seg in segments]
-    lang_name = LANG_NAMES.get(target_lang, target_lang)
-    src_hint = f" from {LANG_NAMES.get(source_lang, source_lang)}" if source_lang else ""
-
-    client = anthropic.Anthropic()
-    msg = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=4096,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Translate these song lyrics{src_hint} to {lang_name}. "
-                f"Return ONLY a valid JSON array of strings with exactly {len(lines)} items, "
-                f"one translation per line in the same order. No extra text.\n\n"
-                + json.dumps(lines, ensure_ascii=False)
-            )
-        }]
+def _mymemory_translate(text: str, source: str, target: str) -> str:
+    """Translate a single text using MyMemory free API."""
+    params = urllib.parse.urlencode({"q": text, "langpair": f"{source}|{target}"})
+    req = urllib.request.Request(
+        f"https://api.mymemory.translated.net/get?{params}",
+        headers={"User-Agent": "KaraokeApp/1.0"}
     )
-    return json.loads(msg.content[0].text)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read())
+    result = data["responseData"]["translatedText"]
+    if "PLEASE SELECT" in result.upper():
+        return text
+    return result
+
+
+def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
+    """Translate segment texts using MyMemory free API. Returns list of translated strings."""
+    src = source_lang or "auto"
+    results = []
+    for seg in segments:
+        text = seg["text"].strip()
+        if not text:
+            results.append("")
+            continue
+        try:
+            results.append(_mymemory_translate(text, src, target_lang))
+        except Exception:
+            results.append(text)
+    return results
 
 
