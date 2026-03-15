@@ -291,7 +291,7 @@ def _lyrics_text(segments: list) -> str:
 
 
 def _detect_language(text: str) -> str:
-    """Detect language from lyrics text using Unicode script ranges."""
+    """Detect language from lyrics text using Unicode script ranges and Latin heuristics."""
     if not text:
         return "en"
     counts = {
@@ -306,6 +306,40 @@ def _detect_language(text: str) -> str:
     best = max(counts, key=counts.get)
     if counts[best] > threshold:
         return best
+
+    # Latin-script language detection via unique characters and common words
+    lower = text.lower()
+    words = set(re.findall(r"[a-záéíóúüñàâçèêëîïôùûœæ']+", lower))
+    scores = {
+        "es": (
+            sum(1 for c in text if c in "áéíóúüñ¿¡") * 3 +
+            len(words & {"el", "la", "los", "las", "de", "que", "y", "en", "un", "una",
+                         "es", "se", "no", "con", "por", "su", "me", "mi", "te", "lo"})
+        ),
+        "pt": (
+            sum(1 for c in text if c in "ãõáéíóúâêôçà") * 3 +
+            len(words & {"o", "a", "os", "as", "de", "que", "e", "em", "um", "uma",
+                         "não", "com", "por", "seu", "sua", "me", "te", "se", "ao"})
+        ),
+        "fr": (
+            sum(1 for c in text if c in "àâçèéêëîïôùûœæ") * 3 +
+            len(words & {"le", "la", "les", "de", "que", "et", "en", "un", "une",
+                         "je", "tu", "il", "elle", "nous", "vous", "ils", "pas", "est"})
+        ),
+        "it": (
+            sum(1 for c in text if c in "àèéìíîòóùú") * 3 +
+            len(words & {"il", "lo", "la", "i", "gli", "le", "di", "che", "e", "in",
+                         "un", "una", "non", "mi", "ti", "si", "ho", "sei", "sono"})
+        ),
+        "de": (
+            sum(1 for c in text if c in "äöüß") * 4 +
+            len(words & {"ich", "du", "er", "sie", "es", "wir", "die", "der", "das",
+                         "und", "in", "ist", "nicht", "ein", "eine", "mit", "auf"})
+        ),
+    }
+    best_latin = max(scores, key=scores.get)
+    if scores[best_latin] >= 4:
+        return best_latin
     return "en"
 
 
@@ -406,43 +440,45 @@ LANG_NAMES = {
 }
 
 
-_LINGVA_INSTANCES = [
-    "https://lingva.ml",
-    "https://translate.plausibility.social",
-    "https://lingva.thedaviddelta.com",
-]
-
-
-def _lingva_translate(text: str, source: str, target: str) -> str:
-    """Translate using Lingva (Google Translate proxy). Tries multiple public instances."""
-    encoded = urllib.parse.quote(text, safe="")
-    for base in _LINGVA_INSTANCES:
-        try:
-            req = urllib.request.Request(
-                f"{base}/api/v1/{source}/{target}/{encoded}",
-                headers={"User-Agent": "LetrasApp/1.0"}
-            )
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                return json.loads(resp.read())["translation"]
-        except Exception:
-            continue
-    raise ValueError("All Lingva instances failed")
+def _google_translate(text: str, source: str, target: str) -> str:
+    """Translate using Google Translate unofficial endpoint (free, no key required)."""
+    params = urllib.parse.urlencode({
+        "client": "gtx",
+        "sl": source,
+        "tl": target,
+        "dt": "t",
+        "q": text,
+    })
+    req = urllib.request.Request(
+        f"https://translate.googleapis.com/translate_a/single?{params}",
+        headers={"User-Agent": "Mozilla/5.0"}
+    )
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        data = json.loads(resp.read())
+    # Response format: [[[translated, original, ...], ...], ...]
+    translated = "".join(chunk[0] for chunk in data[0] if chunk[0])
+    if not translated:
+        raise ValueError("Empty response from Google Translate")
+    return translated
 
 
 def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
-    """Translate using Lingva (Google Translate proxy), free, no key, supports auto-detect."""
-    src = source_lang or "auto"
+    """Translate lyrics segments using Google Translate (free, no key required)."""
+    src = source_lang or "en"
     texts = [seg["text"].strip() for seg in segments]
 
     def translate_one(text):
         if not text:
             return ""
         try:
-            return _lingva_translate(text, src, target_lang)
-        except Exception:
+            result = _google_translate(text, src, target_lang)
+            print(f"[translate] '{text[:40]}' → '{result[:40]}'")
+            return result
+        except Exception as e:
+            print(f"[translate] FAILED '{text[:40]}': {e}")
             return text
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         return list(executor.map(translate_one, texts))
 
 
