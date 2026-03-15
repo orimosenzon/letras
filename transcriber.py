@@ -406,8 +406,8 @@ LANG_NAMES = {
 }
 
 
-def _mymemory_translate(text: str, source: str, target: str) -> str:
-    """Translate a single text using MyMemory free API."""
+def _mymemory_call(text: str, source: str, target: str) -> str:
+    """Single MyMemory API call. Raises ValueError on error."""
     params = urllib.parse.urlencode({"q": text, "langpair": f"{source}|{target}"})
     req = urllib.request.Request(
         f"https://api.mymemory.translated.net/get?{params}",
@@ -415,22 +415,30 @@ def _mymemory_translate(text: str, source: str, target: str) -> str:
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.loads(resp.read())
+    if data.get("responseStatus") != 200:
+        raise ValueError("MyMemory API error")
     result = data["responseData"]["translatedText"]
-    if "PLEASE SELECT" in result.upper():
-        return text
+    if "PLEASE SELECT" in result.upper() or result.strip().upper() == text.strip().upper():
+        raise ValueError("No translation content for this language pair")
     return result
 
 
 def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
-    """Translate segment texts using MyMemory free API. Returns list of translated strings."""
-    src = "auto"
+    """Translate via MyMemory, pivoting through English for non-English sources."""
+    src = source_lang or "en"
     texts = [seg["text"].strip() for seg in segments]
 
     def translate_one(text):
         if not text:
             return ""
         try:
-            return _mymemory_translate(text, src, target_lang)
+            if src == target_lang:
+                return text
+            if src != "en":
+                # Pivot: source → English → target
+                english = _mymemory_call(text, src, "en")
+                return _mymemory_call(english, "en", target_lang)
+            return _mymemory_call(text, "en", target_lang)
         except Exception:
             return text
 
