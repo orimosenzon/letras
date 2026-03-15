@@ -71,7 +71,7 @@ def _check_lrclib(title: str) -> bool:
     query = urllib.parse.urlencode({"q": title})
     url = f"https://lrclib.net/api/search?{query}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "KaraokeApp/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "LetrasApp/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             results = json.loads(resp.read())
         return any(r.get("syncedLyrics") for r in results)
@@ -245,7 +245,7 @@ def _try_lrclib(title: str):
     query = urllib.parse.urlencode({"q": title})
     url = f"https://lrclib.net/api/search?{query}"
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "KaraokeApp/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": "LetrasApp/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             results = json.loads(resp.read())
     except Exception as e:
@@ -319,7 +319,7 @@ def _parse_title_artist(title: str):
 
 def _fetch_credits(title: str) -> dict:
     """Fetch lyricist and composer from MusicBrainz. Returns dict with 'lyricist' and/or 'composer'."""
-    headers = {"User-Agent": "KaraokeApp/1.0 (open-source karaoke project)"}
+    headers = {"User-Agent": "LetrasApp/1.0 (open-source letras project)"}
     song_title, artist = _parse_title_artist(title)
     mb_query = f'recording:"{song_title}"'
     if artist:
@@ -410,7 +410,7 @@ def _mymemory_translate(text: str, source: str, target: str) -> str:
     params = urllib.parse.urlencode({"q": text, "langpair": f"{source}|{target}"})
     req = urllib.request.Request(
         f"https://api.mymemory.translated.net/get?{params}",
-        headers={"User-Agent": "KaraokeApp/1.0"}
+        headers={"User-Agent": "LetrasApp/1.0"}
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
         data = json.loads(resp.read())

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Karaoke</title>
+  <title>Letras</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -327,7 +327,7 @@
   </style>
 </head>
 <body>
-  <h1>🎤 KARAOKE</h1>
+  <h1>🎤 LETRAS</h1>
 
   <!-- Search screen -->
   <div id="screen-search" class="screen">
@@ -450,11 +450,11 @@
     function adjustOffset(delta) {
       syncOffset = Math.round((syncOffset + delta) * 10) / 10;
       document.getElementById('offset-display').textContent = (syncOffset >= 0 ? '+' : '') + syncOffset.toFixed(1) + 's';
-      if (currentVideoId) localStorage.setItem('karaoke_offset_' + currentVideoId, syncOffset);
+      if (currentVideoId) localStorage.setItem('letras_offset_' + currentVideoId, syncOffset);
     }
 
     function loadOffset(videoId) {
-      const stored = localStorage.getItem('karaoke_offset_' + videoId);
+      const stored = localStorage.getItem('letras_offset_' + videoId);
       syncOffset = stored !== null ? parseFloat(stored) : 0;
       document.getElementById('offset-display').textContent = (syncOffset >= 0 ? '+' : '') + syncOffset.toFixed(1) + 's';
     }

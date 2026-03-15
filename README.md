@@ -1,6 +1,6 @@
-# 🎤 Karaoke — YouTube to Synced Lyrics Player
+# 🎤 Letras — YouTube Lyrics Player
 
-Paste any YouTube link → get a real-time karaoke experience with word-level highlighting.
+Paste any YouTube link → get real-time synchronized lyrics with word-level highlighting.
 
 **[Live demo →](https://fun-production-d221.up.railway.app/)**
 
@@ -10,7 +10,8 @@ Paste any YouTube link → get a real-time karaoke experience with word-level hi
 
 1. You paste a YouTube URL (or search by song name)
 2. The app fetches synced lyrics from the best available source
-3. Your browser plays the audio and highlights the current lyric line in sync
+3. Your browser plays the video and highlights the current lyric line in sync
+4. Translate lyrics to any language on demand (free, no API key needed)
 
 No Whisper, no heavy ML — just smart use of existing data sources.
 
@@ -45,7 +46,9 @@ The search endpoint doesn't just return YouTube results — it filters them in p
 | Backend | Python + Flask |
 | YouTube audio & captions | yt-dlp |
 | Synced lyrics fallback | LRClib API |
-| Frontend player | HTML5 Audio API + vanilla JS |
+| Song credits | MusicBrainz API |
+| Translation | MyMemory API (free) |
+| Frontend player | YouTube IFrame API + vanilla JS |
 | Deployment | Docker + Gunicorn |
 
 ---
@@ -54,23 +57,13 @@ The search endpoint doesn't just return YouTube results — it filters them in p
 
 ```bash
 # Clone and install
-git clone https://github.com/orimosenzon/karaoke.git
-cd karaoke
+git clone https://github.com/orimosenzon/letras.git
+cd letras
 pip install -r requirements.txt
-
-# Also needs ffmpeg and nodejs on your PATH
-# On Ubuntu: sudo apt install ffmpeg nodejs
 
 # Start
 python app.py
 # → http://localhost:5001
-```
-
-**Or with Docker:**
-
-```bash
-docker build -t karaoke .
-docker run -p 8000:8000 karaoke
 ```
 
 ---
@@ -79,10 +72,10 @@ docker run -p 8000:8000 karaoke
 
 ```
 app.py          — Flask routes, job tracking
-transcriber.py  — lyrics pipeline (captions → LRClib → cache)
+transcriber.py  — lyrics pipeline (captions → LRClib → cache) + translation
 templates/
-  index.html    — player UI, search, real-time sync
-static/         — cached audio + transcript JSON per song
+  index.html    — player UI, search, real-time sync, translation
+static/         — cached lyrics JSON per song
 Dockerfile
 ```
 
