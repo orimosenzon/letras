@@ -406,39 +406,39 @@ LANG_NAMES = {
 }
 
 
-def _mymemory_call(text: str, source: str, target: str) -> str:
-    """Single MyMemory API call. Raises ValueError on error."""
-    params = urllib.parse.urlencode({"q": text, "langpair": f"{source}|{target}"})
-    req = urllib.request.Request(
-        f"https://api.mymemory.translated.net/get?{params}",
-        headers={"User-Agent": "LetrasApp/1.0"}
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read())
-    if data.get("responseStatus") != 200:
-        raise ValueError("MyMemory API error")
-    result = data["responseData"]["translatedText"]
-    if "PLEASE SELECT" in result.upper() or result.strip().upper() == text.strip().upper():
-        raise ValueError("No translation content for this language pair")
-    return result
+_LINGVA_INSTANCES = [
+    "https://lingva.ml",
+    "https://translate.plausibility.social",
+    "https://lingva.thedaviddelta.com",
+]
+
+
+def _lingva_translate(text: str, source: str, target: str) -> str:
+    """Translate using Lingva (Google Translate proxy). Tries multiple public instances."""
+    encoded = urllib.parse.quote(text, safe="")
+    for base in _LINGVA_INSTANCES:
+        try:
+            req = urllib.request.Request(
+                f"{base}/api/v1/{source}/{target}/{encoded}",
+                headers={"User-Agent": "LetrasApp/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return json.loads(resp.read())["translation"]
+        except Exception:
+            continue
+    raise ValueError("All Lingva instances failed")
 
 
 def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
-    """Translate via MyMemory, pivoting through English for non-English sources."""
-    src = source_lang or "en"
+    """Translate using Lingva (Google Translate proxy), free, no key, supports auto-detect."""
+    src = source_lang or "auto"
     texts = [seg["text"].strip() for seg in segments]
 
     def translate_one(text):
         if not text:
             return ""
         try:
-            if src == target_lang:
-                return text
-            if src != "en":
-                # Pivot: source → English → target
-                english = _mymemory_call(text, src, "en")
-                return _mymemory_call(english, "en", target_lang)
-            return _mymemory_call(text, "en", target_lang)
+            return _lingva_translate(text, src, target_lang)
         except Exception:
             return text
 
