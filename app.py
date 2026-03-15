@@ -6,9 +6,10 @@
 # See the LICENSE file for details.
 
 import os
+import json
 import time
 from flask import Flask, render_template, jsonify, request
-from transcriber import process_url, url_id, STATIC_DIR, search_songs
+from transcriber import process_url, url_id, STATIC_DIR, search_songs, translate_segments
 
 app = Flask(__name__)
 
@@ -67,15 +68,43 @@ def api_search():
 
 
 
+@app.route("/api/translate", methods=["POST"])
+def translate():
+    song_id = request.json.get("song_id", "").strip()
+    target_lang = request.json.get("target_lang", "").strip()
+    if not song_id or not target_lang:
+        return jsonify({"error": "missing params"}), 400
+
+    cache_path = os.path.join(STATIC_DIR, f"{song_id}.json")
+    if not os.path.exists(cache_path):
+        return jsonify({"error": "song not found"}), 404
+
+    with open(cache_path) as f:
+        data = json.load(f)
+
+    translations = data.get("translations", {})
+    if target_lang in translations:
+        return jsonify({"translations": translations[target_lang]})
+
+    try:
+        translated = translate_segments(data["segments"], target_lang, data.get("lang"))
+        data.setdefault("translations", {})[target_lang] = translated
+        with open(cache_path, "w") as f:
+            json.dump(data, f, ensure_ascii=False)
+        return jsonify({"translations": translated})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/debug/credits")
 def debug_credits():
     title = request.args.get("title", "").strip()
     if not title:
         return jsonify({"error": "no title"}), 400
-    from transcriber import _fetch_credits, _clean_title
-    cleaned = _clean_title(title)
+    from transcriber import _fetch_credits, _parse_title_artist
+    song_title, artist = _parse_title_artist(title)
     result = _fetch_credits(title)
-    return jsonify({"input": title, "cleaned": cleaned, "result": result})
+    return jsonify({"input": title, "song_title": song_title, "artist": artist, "result": result})
 
 
 if __name__ == "__main__":

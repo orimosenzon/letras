@@ -396,3 +396,34 @@ def _fetch_credits(title: str) -> dict:
         return {}
 
 
+LANG_NAMES = {
+    "en": "English", "he": "Hebrew", "es": "Spanish", "fr": "French",
+    "de": "German", "ru": "Russian", "ar": "Arabic", "pt": "Portuguese",
+    "ja": "Japanese", "ko": "Korean", "zh": "Chinese", "it": "Italian",
+}
+
+
+def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
+    """Translate segment texts using Claude Haiku. Returns list of translated strings."""
+    import anthropic
+    lines = [seg["text"] for seg in segments]
+    lang_name = LANG_NAMES.get(target_lang, target_lang)
+    src_hint = f" from {LANG_NAMES.get(source_lang, source_lang)}" if source_lang else ""
+
+    client = anthropic.Anthropic()
+    msg = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=4096,
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Translate these song lyrics{src_hint} to {lang_name}. "
+                f"Return ONLY a valid JSON array of strings with exactly {len(lines)} items, "
+                f"one translation per line in the same order. No extra text.\n\n"
+                + json.dumps(lines, ensure_ascii=False)
+            )
+        }]
+    )
+    return json.loads(msg.content[0].text)
+
+

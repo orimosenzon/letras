@@ -181,6 +181,32 @@
       letter-spacing: 0.3px;
     }
 
+    #translation-bar {
+      display: none;
+      margin-bottom: 8px;
+    }
+    #translate-select {
+      background: #1a1a1a;
+      color: #aaa;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      outline: none;
+    }
+    #translate-select:hover { border-color: #555; color: #ddd; }
+    #translate-select:focus { border-color: #e91e8c66; }
+
+    .translation {
+      width: 100%;
+      font-size: 0.95rem;
+      color: #777;
+      margin-top: 6px;
+      font-style: italic;
+      line-height: 1.5;
+    }
+
     #source-label {
       font-size: 0.8rem;
       color: #666;
@@ -330,6 +356,20 @@
       <div id="song-title"></div>
       <div id="song-credits"></div>
       <div id="source-label"></div>
+      <div id="translation-bar">
+        <select id="translate-select" onchange="onTranslateLangChange()">
+          <option value="">🌐 Translate…</option>
+          <option value="en">English</option>
+          <option value="he">עברית</option>
+          <option value="es">Español</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="ru">Русский</option>
+          <option value="ar">العربية</option>
+          <option value="pt">Português</option>
+          <option value="ja">日本語</option>
+        </select>
+      </div>
       <div id="video-row">
         <div id="offset-controls">
           <button onclick="adjustOffset(-1)">-1s</button>
@@ -404,6 +444,8 @@
     }
 
     var currentVideoId = null;
+    var currentSongId = null;
+    var currentTranslations = {};
 
     function adjustOffset(delta) {
       syncOffset = Math.round((syncOffset + delta) * 10) / 10;
@@ -482,6 +524,7 @@
 
     function showResults() {
       stopPlayer();
+      document.getElementById('translation-bar').style.display = 'none';
       showScreen('results');
       setStatus('');
       setProgress('hide');
@@ -590,6 +633,11 @@
         document.getElementById('source-label').textContent = data.source ? '(' + (sourceMap[data.source] || data.source) + ')' : '';
         renderLyrics(segments);
 
+        currentSongId = data.id;
+        currentTranslations = {};
+        document.getElementById('translate-select').value = '';
+        document.getElementById('translation-bar').style.display = 'block';
+
         const videoId = ytVideoId(song.url);
         currentVideoId = videoId;
         loadOffset(videoId);
@@ -655,10 +703,49 @@
             div.appendChild(span);
           });
         } else {
-          div.textContent = seg.text;
+          const textSpan = document.createElement('span');
+          textSpan.textContent = seg.text;
+          div.appendChild(textSpan);
         }
+        const tDiv = document.createElement('div');
+        tDiv.className = 'translation hidden';
+        tDiv.id = `tr-${si}`;
+        div.appendChild(tDiv);
         container.appendChild(div);
       });
+    }
+
+    function showTranslations(list) {
+      list.forEach((text, i) => {
+        const el = document.getElementById(`tr-${i}`);
+        if (el) { el.textContent = text; el.classList.remove('hidden'); }
+      });
+    }
+
+    function hideTranslations() {
+      document.querySelectorAll('.translation').forEach(el => el.classList.add('hidden'));
+    }
+
+    async function onTranslateLangChange() {
+      const lang = document.getElementById('translate-select').value;
+      if (!lang) { hideTranslations(); return; }
+      if (currentTranslations[lang]) { showTranslations(currentTranslations[lang]); return; }
+
+      setStatus('Translating…');
+      try {
+        const res = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ song_id: currentSongId, target_lang: lang })
+        });
+        const data = await res.json();
+        if (data.error) { setStatus('Translation failed: ' + data.error, true); return; }
+        setStatus('');
+        currentTranslations[lang] = data.translations;
+        showTranslations(data.translations);
+      } catch (e) {
+        setStatus('Translation error: ' + e.message, true);
+      }
     }
 
     let lastSegIdx = -1;
