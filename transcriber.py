@@ -348,7 +348,7 @@ def _parse_title_artist(title: str):
     cleaned = re.sub(r'\s*[\(\[][^\)\]]*[\)\]]', '', title).strip()
     if ' - ' in cleaned:
         parts = cleaned.split(' - ', 1)
-        return parts[0].strip(), parts[1].strip()
+        return parts[1].strip(), parts[0].strip()  # song_title, artist
     return cleaned or title, None
 
 

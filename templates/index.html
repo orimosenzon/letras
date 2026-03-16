@@ -72,6 +72,19 @@
     }
     .back-btn:hover { background: #1a1a1a; color: #f0f0f0; }
 
+    #share-btn {
+      background: transparent;
+      color: #aaa;
+      border: 1px solid #444;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    #share-btn:hover { background: #1a1a1a; color: #f0f0f0; border-color: #666; }
+    #share-btn.copied { background: #1a3a1a; color: #5f5; border-color: #5f5; }
+
     #player-back {
       position: absolute;
       top: 10px;
@@ -183,6 +196,8 @@
 
     #translation-bar {
       display: none;
+      align-items: center;
+      gap: 10px;
       margin-bottom: 8px;
     }
     #translate-select {
@@ -369,6 +384,7 @@
           <option value="pt">Português</option>
           <option value="ja">日本語</option>
         </select>
+        <button id="share-btn" onclick="shareUrl()">🔗 Share</button>
       </div>
       <div id="video-row">
         <div id="offset-controls">
@@ -419,8 +435,14 @@
 
     function _createOrLoadPlayer(videoId) {
       document.getElementById('yt-player-wrap').style.display = 'block';
+      const seekTo = pendingSeekTime;
+      pendingSeekTime = 0;
       if (ytPlayer && ytPlayer.loadVideoById) {
-        ytPlayer.loadVideoById(videoId);
+        if (seekTo > 0) {
+          ytPlayer.loadVideoById({ videoId: videoId, startSeconds: seekTo });
+        } else {
+          ytPlayer.loadVideoById(videoId);
+        }
         startSync();
         return;
       }
@@ -428,9 +450,13 @@
         width: '100%',
         height: '100%',
         videoId: videoId,
-        playerVars: { autoplay: 1, rel: 0 },
+        playerVars: { autoplay: 1, rel: 0, start: seekTo > 0 ? Math.floor(seekTo) : 0 },
         events: {
-          onReady: function(e) { e.target.playVideo(); startSync(); }
+          onReady: function(e) {
+            if (seekTo > 0) e.target.seekTo(seekTo, true);
+            e.target.playVideo();
+            startSync();
+          }
         }
       });
     }
@@ -445,7 +471,10 @@
 
     var currentVideoId = null;
     var currentSongId = null;
+    var currentSongTitle = '';
     var currentTranslations = {};
+    var pendingSeekTime = 0;
+    var urlUpdateTimer = null;
 
     function adjustOffset(delta) {
       syncOffset = Math.round((syncOffset + delta) * 10) / 10;
@@ -517,12 +546,16 @@
     }
 
     function showSearch() {
+      stopUrlUpdater();
+      history.replaceState(null, '', '/');
       showScreen('search');
       setStatus('');
       setProgress('hide');
     }
 
     function showResults() {
+      stopUrlUpdater();
+      history.replaceState(null, '', '/');
       stopPlayer();
       document.getElementById('translation-bar').style.display = 'none';
       showScreen('results');
@@ -577,12 +610,13 @@
       });
     }
 
-    async function selectSong(song) {
+    async function selectSong(song, startTime = 0, autoLang = '') {
       showScreen('player');
       document.getElementById('song-title').textContent = '';
       document.getElementById('song-credits').textContent = '';
       document.getElementById('lyrics').innerHTML = '';
       stopPlayer();
+      pendingSeekTime = startTime;
 
       setStatus('Starting…');
       setProgress('indeterminate');
@@ -627,7 +661,8 @@
         setProgress('full');
         setStatus('');
         segments = data.segments;
-        document.getElementById('song-title').textContent = data.title || song.title;
+        currentSongTitle = data.title || song.title;
+        document.getElementById('song-title').textContent = currentSongTitle;
         renderCredits(data);
         const sourceMap = { youtube_captions: 'YouTube captions', lrclib: 'LRClib', cached: 'cached' };
         document.getElementById('source-label').textContent = data.source ? '(' + (sourceMap[data.source] || data.source) + ')' : '';
@@ -636,12 +671,19 @@
         currentSongId = data.id;
         currentTranslations = {};
         document.getElementById('translate-select').value = '';
-        document.getElementById('translation-bar').style.display = 'block';
+        document.getElementById('translation-bar').style.display = 'flex';
 
         const videoId = ytVideoId(song.url);
         currentVideoId = videoId;
         loadOffset(videoId);
         if (videoId) loadYTVideo(videoId);
+
+        if (autoLang) {
+          document.getElementById('translate-select').value = autoLang;
+          await onTranslateLangChange();
+        }
+
+        startUrlUpdater();
 
         setTimeout(() => setProgress('hide'), 600);
       } catch (e) {
@@ -728,6 +770,7 @@
 
     async function onTranslateLangChange() {
       const lang = document.getElementById('translate-select').value;
+      updateUrl();
       if (!lang) { hideTranslations(); return; }
       if (currentTranslations[lang]) { showTranslations(currentTranslations[lang]); return; }
 
@@ -787,6 +830,61 @@
       el.textContent = msg;
       el.className = isError ? 'error' : '';
     }
+
+    function updateUrl() {
+      if (!currentVideoId) return;
+      const params = new URLSearchParams();
+      params.set('v', currentVideoId);
+      if (currentSongTitle) params.set('title', currentSongTitle);
+      if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        const t = Math.floor(ytPlayer.getCurrentTime());
+        if (t > 0) params.set('t', t);
+      }
+      const lang = document.getElementById('translate-select').value;
+      if (lang) params.set('lang', lang);
+      history.replaceState(null, '', '?' + params.toString());
+    }
+
+    function startUrlUpdater() {
+      if (urlUpdateTimer) clearInterval(urlUpdateTimer);
+      urlUpdateTimer = setInterval(updateUrl, 2000);
+    }
+
+    function stopUrlUpdater() {
+      if (urlUpdateTimer) { clearInterval(urlUpdateTimer); urlUpdateTimer = null; }
+    }
+
+    async function shareUrl() {
+      updateUrl();
+      const url = window.location.href;
+      const btn = document.getElementById('share-btn');
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch (_) {
+        const inp = document.createElement('input');
+        inp.value = url;
+        document.body.appendChild(inp);
+        inp.select();
+        document.execCommand('copy');
+        document.body.removeChild(inp);
+      }
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+    }
+
+    window.addEventListener('load', async () => {
+      const params = new URLSearchParams(window.location.search);
+      const v = params.get('v');
+      if (v) {
+        const title = params.get('title') || '';
+        const startTime = parseFloat(params.get('t') || '0');
+        const lang = params.get('lang') || '';
+        const url = `https://www.youtube.com/watch?v=${v}`;
+        await selectSong({ url, title }, startTime, lang);
+      }
+    });
 
     document.getElementById('searchInput').addEventListener('keydown', e => {
       if (e.key === 'Enter') doSearch();
