@@ -350,6 +350,28 @@
       align-items: center;
     }
     .hidden { display: none !important; }
+
+    #site-footer {
+      margin-top: auto;
+      padding: 28px 20px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      opacity: 0.45;
+      transition: opacity 0.25s;
+    }
+    #site-footer:hover { opacity: 1; }
+    #site-footer a { text-decoration: none; display: flex; align-items: center; }
+    .footer-credit {
+      color: #888;
+      font-size: 0.82rem;
+      letter-spacing: 0.3px;
+    }
+    .footer-sep {
+      color: #444;
+      font-size: 0.9rem;
+    }
   </style>
 </head>
 <body>
@@ -942,5 +964,31 @@
       if (e.key === 'Enter') doSearch();
     });
   </script>
+
+  <footer id="site-footer">
+    <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener" title="GNU General Public License v3.0">
+      <svg xmlns="http://www.w3.org/2000/svg" width="116" height="22" viewBox="0 0 116 22" role="img" aria-label="license: GPL-3.0">
+        <title>license: GPL-3.0</title>
+        <defs>
+          <clipPath id="gpl-clip">
+            <rect width="116" height="22" rx="4" fill="#fff"/>
+          </clipPath>
+        </defs>
+        <g clip-path="url(#gpl-clip)">
+          <rect width="56" height="22" fill="#2a2a2a"/>
+          <rect x="56" width="60" height="22" fill="#e91e8c"/>
+        </g>
+        <text x="28" y="15" fill="#bbb" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" text-anchor="middle">license</text>
+        <text x="86" y="15.5" fill="#fff" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" font-weight="bold" text-anchor="middle">GPL-3.0</text>
+      </svg>
+    </a>
+    <span class="footer-sep">·</span>
+    <span class="footer-credit">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:5px;margin-bottom:2px">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </svg>Ori Mosenzon
+    </span>
+  </footer>
 </body>
 </html>
