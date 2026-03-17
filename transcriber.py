@@ -92,15 +92,16 @@ def process_url(url: str, title: str = "", on_stage=None):
         stage("cached")
         with open(transcript_path) as f:
             cached = json.load(f)
-        # Backfill credits if missing or from old search logic (credits_version < 2)
-        if cached.get("credits_version", 1) < 2:
+        # Backfill credits if missing or from old search logic (credits_version < 3)
+        # v3: added score-based confidence threshold to avoid wrong performers
+        if cached.get("credits_version", 1) < 3:
             credits = _fetch_credits(cached.get("title", title))
             cached["lyricist"]  = credits.get("lyricist")
             cached["composer"]  = credits.get("composer")
             cached["arranger"]  = credits.get("arranger")
             cached["performer"] = credits.get("performer")
             cached["lang"] = _detect_language(_lyrics_text(cached.get("segments", [])))
-            cached["credits_version"] = 2
+            cached["credits_version"] = 3
             with open(transcript_path, "w") as f:
                 json.dump(cached, f, ensure_ascii=False)
         return cached
@@ -128,7 +129,7 @@ def process_url(url: str, title: str = "", on_stage=None):
         "arranger":  credits.get("arranger"),
         "performer": credits.get("performer"),
         "lang": lang,
-        "credits_version": 2,
+        "credits_version": 3,
     }
     with open(transcript_path, "w") as f:
         json.dump(data, f, ensure_ascii=False)
@@ -372,10 +373,14 @@ def _fetch_credits(title: str) -> dict:
         rec = recordings[0]
         mbid = rec["id"]
 
-        # Extract performer from artist-credit in search result
+        # Extract performer from artist-credit in search result,
+        # but only if MusicBrainz is confident this is the right recording.
+        # Without an artist in the query the top result may be a random cover.
+        score = int(rec.get("score", 0))
+        min_score = 90 if not artist else 70
         artist_credits = rec.get("artist-credit", [])
         performer_names = [a["artist"]["name"] for a in artist_credits if isinstance(a, dict) and "artist" in a]
-        performer = ", ".join(performer_names) or None
+        performer = ", ".join(performer_names) if performer_names and score >= min_score else None
 
         # Step 2: recording → work-rels + artist-rels (for arranger at recording level)
         req = urllib.request.Request(

@@ -84,6 +84,17 @@
     }
     #share-btn:hover { background: #1a1a1a; color: #f0f0f0; border-color: #666; }
     #share-btn.copied { background: #1a3a1a; color: #5f5; border-color: #5f5; }
+    #share-from-here {
+      display: none;
+      font-size: 0.75rem;
+      color: #666;
+      cursor: pointer;
+      margin-top: 3px;
+      text-align: center;
+      transition: color 0.2s;
+    }
+    #share-from-here:hover { color: #aaa; }
+    #share-from-here.copied { color: #5f5; }
 
     #player-back {
       position: absolute;
@@ -384,7 +395,10 @@
           <option value="pt">Português</option>
           <option value="ja">日本語</option>
         </select>
-        <button id="share-btn" onclick="shareUrl()">🔗 Share</button>
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <button id="share-btn" onclick="shareUrl()">🔗 Share</button>
+          <span id="share-from-here" onclick="shareFromHere()">· from here (0:00)</span>
+        </div>
       </div>
       <div id="video-row">
         <div id="offset-controls">
@@ -461,11 +475,13 @@
       });
     }
 
+    var shareUpdateCounter = 0;
     function startSync() {
       stopSync();
       syncTimer = setInterval(function() {
         if (!ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
         syncLyrics(ytPlayer.getCurrentTime() + syncOffset);
+        if (++shareUpdateCounter % 10 === 0) updateShareFromHere();
       }, 100);
     }
 
@@ -854,10 +870,21 @@
       if (urlUpdateTimer) { clearInterval(urlUpdateTimer); urlUpdateTimer = null; }
     }
 
-    async function shareUrl() {
-      updateUrl();
-      const url = window.location.href;
-      const btn = document.getElementById('share-btn');
+    function buildShareUrl(withTime) {
+      if (!currentVideoId) return window.location.href;
+      const params = new URLSearchParams();
+      params.set('v', currentVideoId);
+      if (currentSongTitle) params.set('title', currentSongTitle);
+      if (withTime && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
+        const t = Math.floor(ytPlayer.getCurrentTime());
+        if (t > 0) params.set('t', t);
+      }
+      const lang = document.getElementById('translate-select').value;
+      if (lang) params.set('lang', lang);
+      return window.location.origin + window.location.pathname + '?' + params.toString();
+    }
+
+    async function copyToClipboard(url, el, label) {
       try {
         await navigator.clipboard.writeText(url);
       } catch (_) {
@@ -868,10 +895,35 @@
         document.execCommand('copy');
         document.body.removeChild(inp);
       }
-      const orig = btn.textContent;
-      btn.textContent = '✓ Copied!';
-      btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 2000);
+      const orig = el.textContent;
+      el.textContent = label;
+      el.classList.add('copied');
+      setTimeout(() => { el.textContent = orig; el.classList.remove('copied'); }, 2000);
+    }
+
+    async function shareUrl() {
+      const btn = document.getElementById('share-btn');
+      await copyToClipboard(buildShareUrl(false), btn, '✓ Copied!');
+    }
+
+    async function shareFromHere() {
+      const el = document.getElementById('share-from-here');
+      await copyToClipboard(buildShareUrl(true), el, '✓ Copied!');
+    }
+
+    function updateShareFromHere() {
+      const el = document.getElementById('share-from-here');
+      if (!currentVideoId || !ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') {
+        el.style.display = 'none';
+        return;
+      }
+      const t = Math.floor(ytPlayer.getCurrentTime());
+      const mm = Math.floor(t / 60);
+      const ss = String(t % 60).padStart(2, '0');
+      el.style.display = 'block';
+      if (!el.classList.contains('copied')) {
+        el.textContent = `· from here (${mm}:${ss})`;
+      }
     }
 
     window.addEventListener('load', async () => {
