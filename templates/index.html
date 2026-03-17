@@ -413,6 +413,28 @@
     </div>
     <div id="search-status"></div>
     <div id="search-progress-wrap"><div id="search-progress-bar"></div></div>
+    <footer id="site-footer">
+      <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener" title="GNU General Public License v3.0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="116" height="22" viewBox="0 0 116 22" role="img" aria-label="license: GPL-3.0">
+          <title>license: GPL-3.0</title>
+          <defs>
+            <clipPath id="gpl-clip">
+              <rect width="116" height="22" rx="4" fill="#fff"/>
+            </clipPath>
+          </defs>
+          <g clip-path="url(#gpl-clip)">
+            <rect width="56" height="22" fill="#2a2a2a"/>
+            <rect x="56" width="60" height="22" fill="#e91e8c"/>
+          </g>
+          <text x="28" y="15" fill="#bbb" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" text-anchor="middle">license</text>
+          <text x="86" y="15.5" fill="#fff" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" font-weight="bold" text-anchor="middle">GPL-3.0</text>
+        </svg>
+      </a>
+      <span class="footer-sep">·</span>
+      <span class="footer-credit">
+        <img src="/static/img/ori-head.png" alt="Ori Mosenzon" style="width:22px;height:22px;border-radius:50%;object-fit:cover;object-position:50% 20%;vertical-align:middle;margin-right:5px;">Ori Mosenzon
+      </span>
+    </footer>
   </div>
 
   <!-- Results screen -->
@@ -630,7 +652,6 @@
       ['search', 'results', 'player'].forEach(s => {
         document.getElementById(`screen-${s}`).classList.toggle('hidden', s !== name);
       });
-      document.getElementById('site-footer').classList.toggle('hidden', name === 'player');
     }
 
     function showSearch() {
@@ -1015,27 +1036,6 @@
     });
   </script>
 
-  <footer id="site-footer">
-    <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener" title="GNU General Public License v3.0">
-      <svg xmlns="http://www.w3.org/2000/svg" width="116" height="22" viewBox="0 0 116 22" role="img" aria-label="license: GPL-3.0">
-        <title>license: GPL-3.0</title>
-        <defs>
-          <clipPath id="gpl-clip">
-            <rect width="116" height="22" rx="4" fill="#fff"/>
-          </clipPath>
-        </defs>
-        <g clip-path="url(#gpl-clip)">
-          <rect width="56" height="22" fill="#2a2a2a"/>
-          <rect x="56" width="60" height="22" fill="#e91e8c"/>
-        </g>
-        <text x="28" y="15" fill="#bbb" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" text-anchor="middle">license</text>
-        <text x="86" y="15.5" fill="#fff" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" font-weight="bold" text-anchor="middle">GPL-3.0</text>
-      </svg>
-    </a>
-    <span class="footer-sep">·</span>
-    <span class="footer-credit">
-      <img src="/static/img/ori-head.png" alt="Ori Mosenzon" style="width:22px;height:22px;border-radius:50%;object-fit:cover;object-position:50% 20%;vertical-align:middle;margin-right:5px;">Ori Mosenzon
-    </span>
-  </footer>
+
 </body>
 </html>
