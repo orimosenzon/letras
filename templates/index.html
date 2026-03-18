@@ -20,10 +20,10 @@
 
     h1 {
       font-size: 2.2rem;
-      color: #e91e8c;
+      color: #0d9488;
       letter-spacing: 3px;
       margin-bottom: 30px;
-      text-shadow: 0 0 20px #e91e8c88;
+      text-shadow: 0 0 20px #0d948888;
     }
 
     .input-row {
@@ -45,20 +45,20 @@
       outline: none;
       transition: border-color 0.2s;
     }
-    input[type="text"]:focus { border-color: #e91e8c; }
+    input[type="text"]:focus { border-color: #0d9488; }
 
     button {
       padding: 14px 26px;
       border-radius: 10px;
       border: none;
-      background: #e91e8c;
+      background: #0d9488;
       color: white;
       font-size: 1rem;
       font-weight: bold;
       cursor: pointer;
       transition: background 0.2s, transform 0.1s;
     }
-    button:hover { background: #c0166e; }
+    button:hover { background: #0f766e; }
     button:active { transform: scale(0.97); }
     button:disabled { background: #555; cursor: default; }
 
@@ -97,19 +97,15 @@
     #share-from-here.copied { color: #5f5; }
 
     #player-back {
-      position: absolute;
-      top: 10px;
-      left: 14px;
       background: transparent;
-      color: #666;
-      border: 1px solid #333;
-      padding: 4px 10px;
-      font-size: 0.8rem;
-      border-radius: 8px;
+      color: #aaa;
+      border: 1px solid #444;
+      padding: 8px 18px;
+      font-size: 0.9rem;
+      border-radius: 10px;
       cursor: pointer;
-      z-index: 20;
     }
-    #player-back:hover { color: #aaa; border-color: #555; background: #1a1a1a; }
+    #player-back:hover { background: #1a1a1a; color: #f0f0f0; }
 
     #status, #search-status {
       font-size: 0.95rem;
@@ -138,7 +134,7 @@
     #progress-bar, #search-progress-bar {
       height: 100%;
       width: 0%;
-      background: #e91e8c;
+      background: #0d9488;
       border-radius: 3px;
       transition: width 0.6s ease;
     }
@@ -170,8 +166,8 @@
     }
     .song-card:hover {
       transform: translateY(-4px);
-      box-shadow: 0 8px 24px #e91e8c44;
-      border-color: #e91e8c;
+      box-shadow: 0 8px 24px #0d948844;
+      border-color: #0d9488;
     }
     .song-card img {
       width: 100%;
@@ -191,7 +187,7 @@
     #song-title {
       font-size: 1.4rem;
       font-weight: bold;
-      color: #ffd700;
+      color: #5eead4;
       margin-bottom: 8px;
       text-align: center;
       max-width: 700px;
@@ -222,7 +218,7 @@
       outline: none;
     }
     #translate-select:hover { border-color: #555; color: #ddd; }
-    #translate-select:focus { border-color: #e91e8c66; }
+    #translate-select:focus { border-color: #0d948866; }
 
     .translation {
       width: 100%;
@@ -344,6 +340,73 @@
     #lyrics::-webkit-scrollbar-track { background: transparent; }
     #lyrics::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 
+    /* Ambient background */
+    #ambient-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      background-size: cover;
+      background-position: center;
+      filter: blur(60px) saturate(2);
+      opacity: 0;
+      transition: opacity 1s ease;
+      pointer-events: none;
+      transform: scale(1.1);
+    }
+    #ambient-bg.visible { opacity: 0.18; }
+    #player-top, #lyrics, #player-footer, #top-bar { position: relative; z-index: 1; }
+
+    /* Top bar: back on left, zen on right */
+    #top-bar {
+      width: 100%;
+      max-width: 700px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0 8px;
+      flex-shrink: 0;
+    }
+
+    /* Zen mode button */
+    #zen-btn {
+      background: transparent;
+      color: #666;
+      border: 1px solid #333;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    #zen-btn:hover { color: #aaa; border-color: #555; background: #1a1a1a; }
+
+    /* Zen exit button */
+    #zen-exit {
+      display: none;
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 100;
+      background: rgba(0,0,0,0.5);
+      color: #aaa;
+      border: 1px solid #444;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      border-radius: 20px;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+    }
+    #zen-exit:hover { color: #fff; border-color: #888; }
+
+    /* Zen mode state */
+    #screen-player.zen #top-bar,
+    #screen-player.zen #player-top,
+    #screen-player.zen #player-footer { display: none !important; }
+    #screen-player.zen #zen-exit { display: block; }
+    #screen-player.zen #lyrics { flex: 1; }
+    #screen-player.zen .word { font-size: 1.6rem; }
+    #screen-player.zen .segment { padding: 18px; }
+    #screen-player.zen .segment:not(.active) { opacity: 0.3; }
+
     .segment {
       display: flex;
       flex-wrap: wrap;
@@ -356,8 +419,8 @@
       line-height: 1.8;
     }
     .segment.active {
-      border-left-color: #e91e8c;
-      background: #2a1020;
+      border-left-color: #0d9488;
+      background: #042f2e;
     }
     .word {
       font-size: 1.3rem;
@@ -366,7 +429,7 @@
       transition: background 0.15s, color 0.15s;
     }
     .word.active {
-      background: #e91e8c;
+      background: #0d9488;
       color: white;
       border-radius: 6px;
     }
@@ -424,7 +487,7 @@
           </defs>
           <g clip-path="url(#gpl-clip)">
             <rect width="56" height="22" fill="#2a2a2a"/>
-            <rect x="56" width="60" height="22" fill="#e91e8c"/>
+            <rect x="56" width="60" height="22" fill="#0d9488"/>
           </g>
           <text x="28" y="15" fill="#bbb" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" text-anchor="middle">license</text>
           <text x="86" y="15.5" fill="#fff" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" font-weight="bold" text-anchor="middle">GPL-3.0</text>
@@ -447,7 +510,12 @@
 
   <!-- Player screen -->
   <div id="screen-player" class="screen hidden">
-    <button id="player-back" onclick="showResults()">← Back</button>
+    <div id="ambient-bg"></div>
+    <button id="zen-exit" onclick="toggleZen()">✕ Exit Zen</button>
+    <div id="top-bar">
+      <button id="player-back" onclick="showResults()">← Back</button>
+      <button id="zen-btn" onclick="toggleZen()">⛶ Zen</button>
+    </div>
     <div id="player-top">
       <div id="status"></div>
       <div id="progress-wrap"><div id="progress-bar"></div></div>
@@ -494,7 +562,7 @@
           </defs>
           <g clip-path="url(#gpl-clip2)">
             <rect width="56" height="22" fill="#2a2a2a"/>
-            <rect x="56" width="60" height="22" fill="#e91e8c"/>
+            <rect x="56" width="60" height="22" fill="#0d9488"/>
           </g>
           <text x="28" y="15" fill="#bbb" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" text-anchor="middle">license</text>
           <text x="86" y="15.5" fill="#fff" font-family="Segoe UI,DejaVu Sans,sans-serif" font-size="10.5" font-weight="bold" text-anchor="middle">GPL-3.0</text>
@@ -667,6 +735,10 @@
       history.replaceState(null, '', '/');
       stopPlayer();
       document.getElementById('translation-bar').style.display = 'none';
+      const player = document.getElementById('screen-player');
+      player.classList.remove('zen');
+      document.removeEventListener('keydown', onZenKeydown);
+      document.getElementById('ambient-bg').classList.remove('visible');
       showScreen('results');
       setStatus('');
       setProgress('hide');
@@ -785,7 +857,12 @@
         const videoId = ytVideoId(song.url);
         currentVideoId = videoId;
         loadOffset(videoId);
-        if (videoId) loadYTVideo(videoId);
+        if (videoId) {
+          loadYTVideo(videoId);
+          const bg = document.getElementById('ambient-bg');
+          bg.style.backgroundImage = `url(https://img.youtube.com/vi/${videoId}/maxresdefault.jpg)`;
+          bg.classList.add('visible');
+        }
 
         if (autoLang) {
           document.getElementById('translate-select').value = autoLang;
@@ -992,6 +1069,19 @@
       el.textContent = label;
       el.classList.add('copied');
       setTimeout(() => { el.textContent = orig; el.classList.remove('copied'); }, 2000);
+    }
+
+    function toggleZen() {
+      const player = document.getElementById('screen-player');
+      player.classList.toggle('zen');
+      if (player.classList.contains('zen')) {
+        document.addEventListener('keydown', onZenKeydown);
+      } else {
+        document.removeEventListener('keydown', onZenKeydown);
+      }
+    }
+    function onZenKeydown(e) {
+      if (e.key === 'Escape') toggleZen();
     }
 
     async function shareUrl() {
