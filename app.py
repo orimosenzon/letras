@@ -9,7 +9,7 @@ import os
 import json
 import time
 from flask import Flask, render_template, jsonify, request
-from transcriber import process_url, url_id, STATIC_DIR, search_songs, translate_segments
+from transcriber import process_url, url_id, STATIC_DIR, search_songs, translate_segments, fetch_wikipedia_summary, _google_translate
 
 app = Flask(__name__)
 
@@ -92,6 +92,34 @@ def translate():
         with open(cache_path, "w") as f:
             json.dump(data, f, ensure_ascii=False)
         return jsonify({"translations": translated})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/wikipedia", methods=["POST"])
+def wikipedia():
+    song_title = request.json.get("song_title", "").strip()
+    artist = request.json.get("artist", "").strip()
+    lang = request.json.get("lang", "en").strip()
+    if not song_title:
+        return jsonify({"error": "missing song_title"}), 400
+    try:
+        result = fetch_wikipedia_summary(song_title, artist, lang)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/translate_text", methods=["POST"])
+def translate_text():
+    text = request.json.get("text", "").strip()
+    source_lang = request.json.get("source_lang", "en").strip()
+    target_lang = request.json.get("target_lang", "").strip()
+    if not text or not target_lang:
+        return jsonify({"error": "missing params"}), 400
+    try:
+        translated = _google_translate(text, source_lang, target_lang)
+        return jsonify({"translated": translated})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

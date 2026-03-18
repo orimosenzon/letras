@@ -467,6 +467,49 @@ def _google_translate(text: str, source: str, target: str) -> str:
     return translated
 
 
+def fetch_wikipedia_summary(song_title: str, artist: str = "", lang: str = "en") -> dict:
+    """Search Wikipedia for a song article and return its summary."""
+    wiki_lang = lang if lang else "en"
+
+    def _search(query: str):
+        encoded_query = urllib.parse.quote(query)
+        url = (
+            f"https://{wiki_lang}.wikipedia.org/w/api.php"
+            f"?action=query&list=search&srsearch={encoded_query}"
+            f"&srnamespace=0&srlimit=5&format=json"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "Letras/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            return json.loads(resp.read()).get("query", {}).get("search", [])
+
+    results = _search(f"{song_title} {artist}".strip())
+    if not results:
+        return {"found": False}
+
+    # Prefer result whose title closely matches the song title
+    title_lower = song_title.lower()
+    best = results[0]
+    for r in results:
+        if r["title"].lower() == title_lower:
+            best = r
+            break
+        if title_lower in r["title"].lower() and title_lower not in best["title"].lower():
+            best = r
+
+    encoded_title = urllib.parse.quote(best["title"].replace(" ", "_"))
+    summary_url = f"https://{wiki_lang}.wikipedia.org/api/rest_v1/page/summary/{encoded_title}"
+    req = urllib.request.Request(summary_url, headers={"User-Agent": "Letras/1.0"})
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        summary_data = json.loads(resp.read())
+
+    return {
+        "found": True,
+        "title": summary_data.get("title", ""),
+        "summary": summary_data.get("extract", ""),
+        "url": summary_data.get("content_urls", {}).get("desktop", {}).get("page", ""),
+    }
+
+
 def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
     """Translate lyrics segments using Google Translate (free, no key required)."""
     src = source_lang or "en"

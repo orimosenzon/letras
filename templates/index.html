@@ -193,6 +193,92 @@
       max-width: 700px;
     }
 
+    .credits-writer {
+      cursor: pointer;
+      text-decoration: underline dotted #555;
+      transition: color 0.2s;
+    }
+    .credits-writer:hover { color: #5eead4; }
+
+    #wiki-modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000000aa;
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #wiki-modal-overlay.open { display: flex; }
+    #wiki-modal {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 20px 22px;
+      max-width: 560px;
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: 0 8px 40px #000a;
+    }
+    #wiki-modal-title {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: #5eead4;
+      margin-bottom: 10px;
+    }
+    #wiki-modal-body {
+      font-size: 0.9rem;
+      color: #ccc;
+      line-height: 1.6;
+      margin-bottom: 14px;
+      white-space: pre-line;
+    }
+    #wiki-modal-footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #wiki-translate-select {
+      background: #111;
+      color: #aaa;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 5px 12px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      outline: none;
+    }
+    #wiki-translate-select:hover { border-color: #555; }
+    #wiki-modal-link {
+      font-size: 0.78rem;
+      color: #555;
+      text-decoration: none;
+      margin-left: auto;
+    }
+    #wiki-modal-link:hover { color: #aaa; }
+    #wiki-modal-close {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      background: transparent;
+      border: none;
+      color: #666;
+      font-size: 1.1rem;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    #wiki-modal-close:hover { color: #ccc; background: #222; }
+    #wiki-modal-loading {
+      color: #555;
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+
     #song-credits {
       font-size: 0.8rem;
       color: #888;
@@ -551,6 +637,31 @@
       </div>
     </div>
     <div id="lyrics"></div>
+    <div id="wiki-modal-overlay" onclick="onWikiOverlayClick(event)">
+      <div id="wiki-modal">
+        <button id="wiki-modal-close" onclick="closeWikiModal()">✕</button>
+        <div id="wiki-modal-title"></div>
+        <div id="wiki-modal-body"></div>
+        <div id="wiki-modal-footer">
+          <select id="wiki-translate-select" onchange="onWikiTranslate()">
+            <option value="">🌐 Translate…</option>
+            <option value="en">English</option>
+            <option value="he">עברית</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="ru">Русский</option>
+            <option value="ar">العربية</option>
+            <option value="pt">Português</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="zh">中文</option>
+            <option value="it">Italiano</option>
+          </select>
+          <a id="wiki-modal-link" href="#" target="_blank" rel="noopener">Wikipedia ↗</a>
+        </div>
+      </div>
+    </div>
     <footer id="player-footer">
       <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener" title="GNU General Public License v3.0">
         <svg xmlns="http://www.w3.org/2000/svg" width="116" height="22" viewBox="0 0 116 22" role="img" aria-label="license: GPL-3.0">
@@ -690,22 +801,131 @@
       zh: { lyrics: '词曲', music: '作曲', both: '词曲', arranger: '编曲', performer: '演唱' },
     };
 
+    let wikiSongData = null;       // { song_title, artist, lang }
+    let wikiOriginalText = null;   // original Wikipedia summary (untranslated)
+    let wikiTranslationCache = {}; // lang → translated text
+
     function renderCredits(data) {
       const labels = CREDITS_LABELS[data.lang] || CREDITS_LABELS.en;
       const lyricist  = data.lyricist  || null;
       const composer  = data.composer  || null;
       const arranger  = data.arranger  || null;
       const performer = data.performer || null;
-      const parts = [];
-      if (performer) parts.push(`${labels.performer}: ${performer}`);
+
+      // Determine writer text
+      let writerText = null;
       if (lyricist && composer && lyricist === composer) {
-        parts.push(`${labels.both}: ${lyricist}`);
+        writerText = `${labels.both}: ${lyricist}`;
       } else {
+        const parts = [];
         if (composer) parts.push(`${labels.music}: ${composer}`);
         if (lyricist) parts.push(`${labels.lyrics}: ${lyricist}`);
+        if (parts.length) writerText = parts.join(' · ');
       }
-      if (arranger) parts.push(`${labels.arranger}: ${arranger}`);
-      document.getElementById('song-credits').textContent = parts.join(' · ');
+
+      const container = document.getElementById('song-credits');
+      container.textContent = '';
+
+      const allParts = [];
+      if (performer) allParts.push({ text: `${labels.performer}: ${performer}`, writer: false });
+      if (writerText) allParts.push({ text: writerText, writer: true });
+      if (arranger)  allParts.push({ text: `${labels.arranger}: ${arranger}`, writer: false });
+
+      // Store wiki data for this song
+      wikiSongData = {
+        song_title: data.title || currentSongTitle || '',
+        artist: performer || '',
+        lang: data.lang || 'en',
+      };
+      wikiOriginalText = null;
+      wikiTranslationCache = {};
+
+      allParts.forEach((part, i) => {
+        if (i > 0) container.appendChild(document.createTextNode(' · '));
+        if (part.writer) {
+          const span = document.createElement('span');
+          span.className = 'credits-writer';
+          span.textContent = part.text;
+          span.title = 'Wikipedia';
+          span.onclick = openWikiModal;
+          container.appendChild(span);
+        } else {
+          container.appendChild(document.createTextNode(part.text));
+        }
+      });
+    }
+
+    async function openWikiModal() {
+      const overlay = document.getElementById('wiki-modal-overlay');
+      overlay.classList.add('open');
+      document.getElementById('wiki-modal-title').textContent = '';
+      document.getElementById('wiki-modal-body').innerHTML = '<span id="wiki-modal-loading">Searching Wikipedia…</span>';
+      document.getElementById('wiki-modal-link').href = '#';
+      document.getElementById('wiki-translate-select').value = '';
+
+      if (!wikiSongData) return;
+
+      try {
+        const res = await fetch('/api/wikipedia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(wikiSongData),
+        });
+        const data = await res.json();
+        if (!data.found || !data.summary) {
+          document.getElementById('wiki-modal-body').textContent = 'No Wikipedia article found for this song.';
+          return;
+        }
+        wikiOriginalText = data.summary;
+        document.getElementById('wiki-modal-title').textContent = data.title;
+        document.getElementById('wiki-modal-body').textContent = data.summary;
+        if (data.url) {
+          document.getElementById('wiki-modal-link').href = data.url;
+        }
+      } catch (e) {
+        document.getElementById('wiki-modal-body').textContent = 'Error loading Wikipedia.';
+      }
+    }
+
+    function closeWikiModal() {
+      document.getElementById('wiki-modal-overlay').classList.remove('open');
+    }
+
+    function onWikiOverlayClick(e) {
+      if (e.target === document.getElementById('wiki-modal-overlay')) closeWikiModal();
+    }
+
+    async function onWikiTranslate() {
+      const lang = document.getElementById('wiki-translate-select').value;
+      if (!lang || !wikiOriginalText) return;
+
+      if (!lang) {
+        document.getElementById('wiki-modal-body').textContent = wikiOriginalText;
+        return;
+      }
+      if (wikiTranslationCache[lang]) {
+        document.getElementById('wiki-modal-body').textContent = wikiTranslationCache[lang];
+        return;
+      }
+
+      document.getElementById('wiki-modal-body').innerHTML = '<span id="wiki-modal-loading">Translating…</span>';
+      try {
+        const res = await fetch('/api/translate_text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: wikiOriginalText,
+            source_lang: wikiSongData.lang || 'en',
+            target_lang: lang,
+          }),
+        });
+        const data = await res.json();
+        const result = data.translated || wikiOriginalText;
+        wikiTranslationCache[lang] = result;
+        document.getElementById('wiki-modal-body').textContent = result;
+      } catch (e) {
+        document.getElementById('wiki-modal-body').textContent = wikiOriginalText;
+      }
     }
 
     const STAGE_LABELS = {

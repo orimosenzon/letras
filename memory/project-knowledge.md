@@ -65,5 +65,5 @@ letras/
 - [x] Sync offset saved/restored per song (localStorage)
 - [x] Song credits: lyricist, composer, arranger, performer (MusicBrainz)
 - [x] Localized credit labels (12 languages)
-- [x] Line-by-line translation via MyMemory API (free, cached per language)
+- [x] Line-by-line translation via MyMemory API (free, cached per language in JSON)
 - [x] Renamed from "karaoke" to "Letras"
