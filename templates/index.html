@@ -163,11 +163,40 @@
       cursor: pointer;
       transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
       border: 2px solid transparent;
+      position: relative;
     }
+    .song-card-badge {
+      position: absolute;
+      top: 7px;
+      left: 7px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+      pointer-events: none;
+    }
+    .badge-synced { background: #0d9488; color: #fff; }
+    .badge-plain  { background: #3a3a3a; color: #bbb; }
+    .badge-none   { background: #2a2a2a; color: #666; }
     .song-card:hover {
       transform: translateY(-4px);
       box-shadow: 0 8px 24px #0d948844;
       border-color: #0d9488;
+    }
+    .song-card--synced {
+      border-color: #0d948855;
+      box-shadow: 0 0 10px #0d948830;
+    }
+    .song-card--synced:hover {
+      box-shadow: 0 8px 24px #0d948866;
+      border-color: #0d9488;
+    }
+    .song-card--no-lrc {
+      opacity: 0.65;
+    }
+    .song-card--no-lrc:hover {
+      opacity: 1;
     }
     .song-card img {
       width: 100%;
@@ -777,6 +806,7 @@
     var currentTranslations = {};
     var pendingSeekTime = 0;
     var urlUpdateTimer = null;
+    var isSynced = true;
 
     function adjustOffset(delta) {
       syncOffset = Math.round((syncOffset + delta) * 10) / 10;
@@ -1019,10 +1049,19 @@
     function renderResults(results) {
       const grid = document.getElementById('results-grid');
       grid.innerHTML = '';
+      const BADGES = {
+        synced: { cls: 'badge-synced', label: '♪ Synced' },
+        plain:  { cls: 'badge-plain',  label: '♪ Lyrics' },
+        none:   { cls: 'badge-none',   label: '? Unknown' },
+      };
       results.forEach(r => {
+        const status = r.lrc_status || (r.has_lrc ? 'synced' : 'none');
+        const cardCls = status === 'synced' ? 'song-card--synced' : status === 'none' ? 'song-card--no-lrc' : '';
+        const badge = BADGES[status] || BADGES.none;
         const card = document.createElement('div');
-        card.className = 'song-card';
+        card.className = 'song-card ' + cardCls;
         card.innerHTML = `
+          <div class="song-card-badge ${badge.cls}">${badge.label}</div>
           <img src="${r.thumbnail}" alt="" loading="lazy" onerror="this.style.background='#222'">
           <div class="song-card-title">${r.title}</div>
         `;
@@ -1081,18 +1120,19 @@
 
         setProgress('full');
         setStatus('');
-        segments = data.segments;
+        segments = data.segments || [];
+        isSynced = data.synced !== false;
         currentSongTitle = data.title || song.title;
         document.getElementById('song-title').textContent = currentSongTitle;
         renderCredits(data);
-        const sourceMap = { youtube_captions: 'YouTube captions', lrclib: 'LRClib', cached: 'cached' };
+        const sourceMap = { youtube_captions: 'YouTube captions', lrclib: 'LRClib', lrclib_plain: 'LRClib (no sync)', none: 'none', cached: 'cached' };
         console.log('[Letras] Lyrics source:', sourceMap[data.source] || data.source || 'unknown');
-        renderLyrics(segments);
+        renderLyrics(segments, isSynced);
 
         currentSongId = data.id;
         currentTranslations = {};
         document.getElementById('translate-select').value = '';
-        document.getElementById('translation-bar').style.display = 'flex';
+        document.getElementById('translation-bar').style.display = segments.length ? 'flex' : 'none';
 
         const videoId = ytVideoId(song.url);
         currentVideoId = videoId;
@@ -1155,9 +1195,22 @@
       }
     }
 
-    function renderLyrics(segs) {
+    function renderLyrics(segs, synced = true) {
       const container = document.getElementById('lyrics');
       container.innerHTML = '';
+      if (!segs.length) {
+        const notice = document.createElement('div');
+        notice.style.cssText = 'font-size:0.85rem;color:#555;text-align:center;margin-top:24px;';
+        notice.textContent = '♪ No lyrics found for this song';
+        container.appendChild(notice);
+        return;
+      }
+      if (!synced) {
+        const notice = document.createElement('div');
+        notice.style.cssText = 'font-size:0.75rem;color:#555;text-align:center;margin-bottom:12px;';
+        notice.textContent = '♪ lyrics only — no sync';
+        container.appendChild(notice);
+      }
       segs.forEach((seg, si) => {
         const div = document.createElement('div');
         div.className = 'segment';
@@ -1221,6 +1274,7 @@
     let lastWordIdx = -1;
 
     function syncLyrics(t) {
+      if (!isSynced) return;
       let segIdx = -1;
       for (let i = 0; i < segments.length; i++) {
         if (t >= segments[i].start) segIdx = i;

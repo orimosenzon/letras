@@ -50,13 +50,13 @@ def search_songs(query: str) -> list:
             "thumbnail": f"https://img.youtube.com/vi/{vid_id}/mqdefault.jpg",
         })
 
-    confirmed = []
+    lrc_statuses = {}
     lock = threading.Lock()
 
     def check_one(c):
-        if _check_lrclib(c["title"]):
-            with lock:
-                confirmed.append(c)
+        status = _check_lrclib(c["title"])
+        with lock:
+            lrc_statuses[c["url"]] = status
 
     threads = [threading.Thread(target=check_one, args=(c,)) for c in candidates]
     for t in threads:
@@ -64,20 +64,31 @@ def search_songs(query: str) -> list:
     for t in threads:
         t.join(timeout=6)
 
-    return confirmed[:5]
+    for c in candidates:
+        c["lrc_status"] = lrc_statuses.get(c["url"], "none")
+        c["has_lrc"] = c["lrc_status"] == "synced"
+
+    # Synced first, then plain, then none
+    order = {"synced": 0, "plain": 1, "none": 2}
+    candidates.sort(key=lambda c: order.get(c["lrc_status"], 2))
+    return candidates[:8]
 
 
-def _check_lrclib(title: str) -> bool:
-    """Quick check if LRClib has synced lyrics for this title."""
+def _check_lrclib(title: str) -> str:
+    """Check if LRClib has lyrics for this title. Returns 'synced', 'plain', or 'none'."""
     query = urllib.parse.urlencode({"q": title})
     url = f"https://lrclib.net/api/search?{query}"
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "LetrasApp/1.0"})
         with urllib.request.urlopen(req, timeout=5) as resp:
             results = json.loads(resp.read())
-        return any(r.get("syncedLyrics") for r in results)
+        if any(r.get("syncedLyrics") for r in results):
+            return "synced"
+        if any(r.get("plainLyrics") for r in results):
+            return "plain"
+        return "none"
     except Exception:
-        return False
+        return "none"
 
 
 def process_url(url: str, title: str = "", on_stage=None):
@@ -106,7 +117,7 @@ def process_url(url: str, title: str = "", on_stage=None):
                 json.dump(cached, f, ensure_ascii=False)
         return cached
 
-    # Try YouTube captions first, then LRClib
+    # Try YouTube captions first, then LRClib synced, then LRClib plain
     stage("captions")
     captions = _try_youtube_captions(url, vid_id)
     if captions:
@@ -117,13 +128,18 @@ def process_url(url: str, title: str = "", on_stage=None):
         if lrc:
             segments, source = lrc, "lrclib"
         else:
-            return {"error": "No lyrics found for this song. Try a more popular track."}
+            plain = _try_lrclib_plain(title) or _try_lyrics_ovh(title)
+            if plain:
+                segments, source = plain, "lrclib_plain"
+            else:
+                segments, source = [], "none"
 
     credits = _fetch_credits(title)
     lang = _detect_language(_lyrics_text(segments))
     data = {
         "id": vid_id, "title": title, "url": url,
         "segments": segments, "source": source,
+        "synced": source != "lrclib_plain",
         "lyricist":  credits.get("lyricist"),
         "composer":  credits.get("composer"),
         "arranger":  credits.get("arranger"),
@@ -240,6 +256,47 @@ def _ts(s: str) -> float:
     parts = s.split(':')
     h, m, sec = int(parts[0]), int(parts[1]), float(parts[2])
     return h * 3600 + m * 60 + sec
+
+
+def _try_lyrics_ovh(title: str) -> list:
+    """Fetch plain lyrics from lyrics.ovh (free, no auth)."""
+    song_title, artist = _parse_title_artist(title)
+    if not artist:
+        return None
+    url = f"https://api.lyrics.ovh/v1/{urllib.parse.quote(artist)}/{urllib.parse.quote(song_title)}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "LetrasApp/1.0"})
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read())
+        lyrics = data.get("lyrics", "").strip()
+        if lyrics:
+            lines = [l.strip() for l in lyrics.split("\n") if l.strip()]
+            if lines:
+                print(f"Using lyrics.ovh ({len(lines)} lines)")
+                return [{"text": line, "start": None, "end": None, "words": []} for line in lines]
+    except Exception as e:
+        print(f"lyrics.ovh failed: {e}")
+    return None
+
+
+def _try_lrclib_plain(title: str):
+    """Fetch unsynced plain text lyrics from LRClib as static segments."""
+    query = urllib.parse.urlencode({"q": title})
+    url = f"https://lrclib.net/api/search?{query}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "LetrasApp/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            results = json.loads(resp.read())
+        for result in results:
+            plain = result.get("plainLyrics")
+            if plain:
+                lines = [l.strip() for l in plain.split("\n") if l.strip()]
+                if lines:
+                    print(f"Using LRClib plain lyrics ({len(lines)} lines)")
+                    return [{"text": line, "start": None, "end": None, "words": []} for line in lines]
+    except Exception as e:
+        print(f"LRClib plain fetch failed: {e}")
+    return None
 
 
 def _try_lrclib(title: str):
