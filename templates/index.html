@@ -736,7 +736,7 @@
     </div>
     <div id="lyrics"></div>
     <div id="wiki-modal-overlay" onclick="onWikiOverlayClick(event)">
-      <div id="wiki-modal">
+      <div id="wiki-modal" onmouseenter="_cancelWikiClose()" onmouseleave="_scheduleWikiClose()">
         <button id="wiki-modal-close" onclick="closeWikiModal()">✕</button>
         <div id="wiki-modal-title"></div>
         <div id="wiki-modal-body"></div>
@@ -903,6 +903,14 @@
     let wikiSongData = null;       // { song_title, artist, lang }
     let wikiOriginalText = null;   // original Wikipedia summary (untranslated)
     let wikiTranslationCache = {}; // lang → translated text
+    let wikiHoverMode = false;     // true = opened by hover (auto-closes on mouse-out)
+    let wikiCloseTimer = null;
+
+    function _cancelWikiClose() { clearTimeout(wikiCloseTimer); }
+    function _scheduleWikiClose() {
+      if (!wikiHoverMode) return;
+      wikiCloseTimer = setTimeout(() => { closeWikiModal(); }, 150);
+    }
 
     function renderCredits(data) {
       const labels = CREDITS_LABELS[data.lang] || CREDITS_LABELS.en;
@@ -927,10 +935,11 @@
           const subject = { song_title: name.trim(), artist: '', lang };
           let hoverTimer = null;
           span.addEventListener('mouseenter', () => {
-            hoverTimer = setTimeout(() => openWikiModal(subject), 400);
+            _cancelWikiClose();
+            hoverTimer = setTimeout(() => { wikiHoverMode = true; openWikiModal(subject); }, 400);
           });
-          span.addEventListener('mouseleave', () => clearTimeout(hoverTimer));
-          span.onclick = () => openWikiModal(subject);
+          span.addEventListener('mouseleave', () => { clearTimeout(hoverTimer); _scheduleWikiClose(); });
+          span.onclick = () => { clearTimeout(hoverTimer); _cancelWikiClose(); wikiHoverMode = false; openWikiModal(subject); };
           container.appendChild(span);
         });
       }
@@ -959,10 +968,11 @@
       const songTitleEl = document.getElementById('song-title');
       let songTitleHoverTimer = null;
       songTitleEl.onmouseenter = () => {
-        songTitleHoverTimer = setTimeout(() => openWikiModal(songSubject), 400);
+        _cancelWikiClose();
+        songTitleHoverTimer = setTimeout(() => { wikiHoverMode = true; openWikiModal(songSubject); }, 400);
       };
-      songTitleEl.onmouseleave = () => clearTimeout(songTitleHoverTimer);
-      songTitleEl.onclick = () => openWikiModal(songSubject);
+      songTitleEl.onmouseleave = () => { clearTimeout(songTitleHoverTimer); _scheduleWikiClose(); };
+      songTitleEl.onclick = () => { clearTimeout(songTitleHoverTimer); _cancelWikiClose(); wikiHoverMode = false; openWikiModal(songSubject); };
 
       wikiOriginalText = null;
       wikiTranslationCache = {};
@@ -1016,6 +1026,7 @@
 
     function closeWikiModal() {
       document.getElementById('wiki-modal-overlay').classList.remove('open');
+      wikiHoverMode = false;
     }
 
     function onWikiOverlayClick(e) {
