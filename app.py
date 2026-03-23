@@ -8,6 +8,8 @@
 import os
 import json
 import time
+import urllib.request
+import urllib.parse
 from flask import Flask, render_template, jsonify, request
 from transcriber import process_url, url_id, STATIC_DIR, search_songs, translate_segments, fetch_wikipedia_summary, _google_translate
 
@@ -56,6 +58,25 @@ def job_status(job_id):
         return jsonify({"stage": "unknown"})
     elapsed = round(time.time() - job["started_at"], 1)
     return jsonify({"stage": job["stage"], "elapsed": elapsed})
+
+
+@app.route("/api/suggest")
+def api_suggest():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"suggestions": []})
+    try:
+        url = (
+            "https://suggestqueries.google.com/complete/search"
+            f"?client=firefox&ds=yt&q={urllib.parse.quote(q)}"
+        )
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            data = json.loads(resp.read().decode())
+        suggestions = data[1] if len(data) > 1 else []
+        return jsonify({"suggestions": suggestions[:8]})
+    except Exception:
+        return jsonify({"suggestions": []})
 
 
 @app.route("/api/search")

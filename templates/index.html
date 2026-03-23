@@ -597,6 +597,43 @@
       color: #444;
       font-size: 0.9rem;
     }
+
+    /* Autocomplete dropdown */
+    .input-row { position: relative; }
+    #suggest-list {
+      display: none;
+      position: absolute;
+      top: calc(100% - 4px);
+      left: 0;
+      right: 0;
+      background: #1a1a1a;
+      border: 2px solid #0d9488;
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      z-index: 50;
+      overflow: hidden;
+    }
+    #suggest-list.open { display: block; }
+    .input-row:has(#suggest-list.open) input[type="text"] {
+      border-bottom-color: transparent;
+      border-radius: 10px 10px 0 0;
+    }
+    .suggest-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      color: #ccc;
+      cursor: pointer;
+      border-bottom: 1px solid #222;
+    }
+    .suggest-item:last-child { border-bottom: none; }
+    .suggest-item:hover, .suggest-item.active {
+      background: #0d948820;
+      color: #f0f0f0;
+    }
+    .suggest-icon { color: #555; font-size: 0.8rem; flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -605,8 +642,9 @@
   <!-- Search screen -->
   <div id="screen-search" class="screen">
     <div class="input-row">
-      <input type="text" id="searchInput" placeholder="Search for a song…" />
+      <input type="text" id="searchInput" placeholder="Search for a song…" autocomplete="off" />
       <button id="searchBtn" onclick="doSearch()">Search</button>
+      <div id="suggest-list"></div>
     </div>
     <div id="search-status"></div>
     <div id="search-progress-wrap"><div id="search-progress-bar"></div></div>
@@ -1422,8 +1460,105 @@
       }
     });
 
-    document.getElementById('searchInput').addEventListener('keydown', e => {
+    // Autocomplete
+    var suggestTimer = null;
+    var suggestActive = -1;
+    var suggestOrigQuery = '';
+
+    function closeSuggest() {
+      document.getElementById('suggest-list').classList.remove('open');
+      suggestActive = -1;
+    }
+
+    function openSuggest(items) {
+      var list = document.getElementById('suggest-list');
+      if (!items.length) { closeSuggest(); return; }
+      list.innerHTML = items.map(function(s, i) {
+        var esc = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        return '<div class="suggest-item" data-idx="' + i + '"><span class="suggest-icon">&#x1F50D;</span>' + esc + '</div>';
+      }).join('');
+      list._items = items;
+      suggestActive = -1;
+      list.classList.add('open');
+      list.querySelectorAll('.suggest-item').forEach(function(el) {
+        el.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          chooseSuggest(parseInt(el.dataset.idx));
+        });
+      });
+    }
+
+    function chooseSuggest(idx) {
+      var list = document.getElementById('suggest-list');
+      var items = list._items || [];
+      if (items[idx] !== undefined) {
+        document.getElementById('searchInput').value = items[idx];
+        closeSuggest();
+        doSearch();
+      }
+    }
+
+    function updateSuggestActive(list) {
+      var items = list._items || [];
+      list.querySelectorAll('.suggest-item').forEach(function(el, i) {
+        el.classList.toggle('active', i === suggestActive);
+      });
+      if (suggestActive >= 0 && items[suggestActive] !== undefined) {
+        document.getElementById('searchInput').value = items[suggestActive];
+      } else {
+        document.getElementById('searchInput').value = suggestOrigQuery;
+      }
+    }
+
+    document.getElementById('searchInput').addEventListener('input', function() {
+      var q = this.value.trim();
+      suggestOrigQuery = q;
+      clearTimeout(suggestTimer);
+      if (!q) { closeSuggest(); return; }
+      suggestTimer = setTimeout(async function() {
+        try {
+          var res = await fetch('/api/suggest?q=' + encodeURIComponent(suggestOrigQuery));
+          var data = await res.json();
+          openSuggest(data.suggestions || []);
+        } catch(e) { closeSuggest(); }
+      }, 220);
+    });
+
+    document.getElementById('searchInput').addEventListener('keydown', function(e) {
+      var list = document.getElementById('suggest-list');
+      var isOpen = list.classList.contains('open');
+      var items = list._items || [];
+      if (isOpen && items.length) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          suggestActive = Math.min(suggestActive + 1, items.length - 1);
+          updateSuggestActive(list);
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          suggestActive = Math.max(suggestActive - 1, -1);
+          updateSuggestActive(list);
+          return;
+        }
+        if (e.key === 'Escape') {
+          document.getElementById('searchInput').value = suggestOrigQuery;
+          closeSuggest();
+          return;
+        }
+        if (e.key === 'Enter') {
+          if (suggestActive >= 0) { chooseSuggest(suggestActive); }
+          else { closeSuggest(); doSearch(); }
+          return;
+        }
+      }
       if (e.key === 'Enter') doSearch();
+    });
+
+    document.addEventListener('mousedown', function(e) {
+      if (!e.target.closest('#suggest-list') && e.target.id !== 'searchInput') {
+        closeSuggest();
+      }
     });
 
     document.addEventListener('keydown', e => {
