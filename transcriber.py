@@ -103,16 +103,17 @@ def process_url(url: str, title: str = "", on_stage=None):
         stage("cached")
         with open(transcript_path) as f:
             cached = json.load(f)
-        # Backfill credits if missing or from old search logic (credits_version < 3)
+        # Backfill credits if missing or from old search logic (credits_version < 4)
         # v3: added score-based confidence threshold to avoid wrong performers
-        if cached.get("credits_version", 1) < 3:
+        # v4: fixed bilingual title parsing (strip Latin transliteration suffixes)
+        if cached.get("credits_version", 1) < 4:
             credits = _fetch_credits(cached.get("title", title))
             cached["lyricist"]  = credits.get("lyricist")
             cached["composer"]  = credits.get("composer")
             cached["arranger"]  = credits.get("arranger")
             cached["performer"] = credits.get("performer")
             cached["lang"] = _detect_language(_lyrics_text(cached.get("segments", [])))
-            cached["credits_version"] = 3
+            cached["credits_version"] = 4
             with open(transcript_path, "w") as f:
                 json.dump(cached, f, ensure_ascii=False)
         return cached
@@ -145,7 +146,7 @@ def process_url(url: str, title: str = "", on_stage=None):
         "arranger":  credits.get("arranger"),
         "performer": credits.get("performer"),
         "lang": lang,
-        "credits_version": 3,
+        "credits_version": 4,
     }
     with open(transcript_path, "w") as f:
         json.dump(data, f, ensure_ascii=False)
@@ -402,11 +403,26 @@ def _detect_language(text: str) -> str:
 
 
 def _parse_title_artist(title: str):
-    """Split a YouTube title into (song_title, artist_or_None), stripping suffixes like (Official Video)."""
+    """Split a YouTube title into (song_title, artist_or_None), stripping suffixes like (Official Video).
+
+    Handles bilingual YouTube titles like 'ריטה - מחכה - Rita - Mehake' by stripping
+    the Latin transliteration suffix from Hebrew song titles (and vice versa).
+    """
     cleaned = re.sub(r'\s*[\(\[][^\)\]]*[\)\]]', '', title).strip()
     if ' - ' in cleaned:
         parts = cleaned.split(' - ', 1)
-        return parts[1].strip(), parts[0].strip()  # song_title, artist
+        song = parts[1].strip()
+        artist = parts[0].strip()
+        # Strip transliteration suffixes: if song still contains " - ", drop any
+        # segments that are purely Latin when the primary segment is non-Latin (Hebrew),
+        # e.g. "מחכה - Rita - Mehake" → "מחכה"
+        if ' - ' in song:
+            is_non_latin = lambda s: any(ord(c) > 127 for c in s)
+            segments = [s.strip() for s in song.split(' - ')]
+            if is_non_latin(segments[0]):
+                kept = [s for s in segments if is_non_latin(s)]
+                song = ' - '.join(kept) if kept else segments[0]
+        return song, artist
     return cleaned or title, None
 
 
