@@ -905,11 +905,17 @@
     let wikiTranslationCache = {}; // lang → translated text
     let wikiHoverMode = false;     // true = opened by hover (auto-closes on mouse-out)
     let wikiCloseTimer = null;
+    let wikiCurrentKey = null;     // key of what's currently shown/loading
+    const wikiCache = {};          // key → API response (avoid re-fetching)
 
+    function _wikiKey(s) { return `${s.song_title}|${s.artist}|${s.lang}`; }
     function _cancelWikiClose() { clearTimeout(wikiCloseTimer); }
     function _scheduleWikiClose() {
       if (!wikiHoverMode) return;
-      wikiCloseTimer = setTimeout(() => { closeWikiModal(); }, 150);
+      wikiCloseTimer = setTimeout(() => { closeWikiModal(); }, 300);
+    }
+    function _isWikiOpen() {
+      return document.getElementById('wiki-modal-overlay').classList.contains('open');
     }
 
     function renderCredits(data) {
@@ -936,6 +942,7 @@
           let hoverTimer = null;
           span.addEventListener('mouseenter', () => {
             _cancelWikiClose();
+            if (_isWikiOpen() && wikiCurrentKey === _wikiKey(subject)) return;
             hoverTimer = setTimeout(() => { wikiHoverMode = true; openWikiModal(subject); }, 400);
           });
           span.addEventListener('mouseleave', () => { clearTimeout(hoverTimer); _scheduleWikiClose(); });
@@ -969,6 +976,7 @@
       let songTitleHoverTimer = null;
       songTitleEl.onmouseenter = () => {
         _cancelWikiClose();
+        if (_isWikiOpen() && wikiCurrentKey === _wikiKey(songSubject)) return;
         songTitleHoverTimer = setTimeout(() => { wikiHoverMode = true; openWikiModal(songSubject); }, 400);
       };
       songTitleEl.onmouseleave = () => { clearTimeout(songTitleHoverTimer); _scheduleWikiClose(); };
@@ -978,20 +986,42 @@
       wikiTranslationCache = {};
     }
 
+    function _renderWikiData(data) {
+      wikiOriginalText = data.content || data.summary;
+      wikiTranslationCache = {};
+      document.getElementById('wiki-modal-title').textContent = data.title;
+      document.getElementById('wiki-translate-select').value = '';
+      const body = document.getElementById('wiki-modal-body');
+      body.innerHTML = '';
+      if (data.image) {
+        const imgEl = document.createElement('img');
+        imgEl.id = 'wiki-modal-image';
+        imgEl.alt = data.title;
+        imgEl.src = data.image;
+        body.appendChild(imgEl);
+      }
+      body.appendChild(document.createTextNode(data.content || data.summary));
+      if (data.url) document.getElementById('wiki-modal-link').href = data.url;
+    }
+
     async function openWikiModal(subject) {
       wikiSongData = subject;
-      wikiOriginalText = null;
-      wikiTranslationCache = {};
+      const key = _wikiKey(subject);
+      wikiCurrentKey = key;
 
       const overlay = document.getElementById('wiki-modal-overlay');
       overlay.classList.add('open');
-      document.getElementById('wiki-modal-title').textContent = '';
-      const body = document.getElementById('wiki-modal-body');
-      body.innerHTML = '<span id="wiki-modal-loading">Searching Wikipedia…</span>';
       document.getElementById('wiki-modal-link').href = '#';
-      document.getElementById('wiki-translate-select').value = '';
 
-      if (!wikiSongData) return;
+      // Serve from cache instantly — no flicker, no network wait
+      if (wikiCache[key]) {
+        _renderWikiData(wikiCache[key]);
+        return;
+      }
+
+      document.getElementById('wiki-modal-title').textContent = '';
+      document.getElementById('wiki-modal-body').innerHTML = '<span id="wiki-modal-loading">Searching Wikipedia…</span>';
+      document.getElementById('wiki-translate-select').value = '';
 
       try {
         const res = await fetch('/api/wikipedia', {
@@ -1000,25 +1030,14 @@
           body: JSON.stringify(wikiSongData),
         });
         const data = await res.json();
+        // Discard if user already moved to a different subject
+        if (wikiCurrentKey !== key) return;
         if (!data.found || !data.summary) {
           document.getElementById('wiki-modal-body').textContent = 'No Wikipedia article found for this song.';
           return;
         }
-        wikiOriginalText = data.content || data.summary;
-        document.getElementById('wiki-modal-title').textContent = data.title;
-        // Rebuild body: image (if any) floated right, then text
-        body.innerHTML = '';
-        if (data.image) {
-          const imgEl = document.createElement('img');
-          imgEl.id = 'wiki-modal-image';
-          imgEl.alt = data.title;
-          imgEl.src = data.image;
-          body.appendChild(imgEl);
-        }
-        body.appendChild(document.createTextNode(data.content || data.summary));
-        if (data.url) {
-          document.getElementById('wiki-modal-link').href = data.url;
-        }
+        wikiCache[key] = data;
+        _renderWikiData(data);
       } catch (e) {
         document.getElementById('wiki-modal-body').textContent = 'Error loading Wikipedia.';
       }
