@@ -242,8 +242,21 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
+      pointer-events: auto;
     }
     #wiki-modal-overlay.open { display: flex; }
+    /* In hover mode: no backdrop, overlay doesn't block clicks on the page */
+    #wiki-modal-overlay.open.hover-mode {
+      background: transparent;
+      pointer-events: none;
+    }
+    #wiki-modal-overlay.open.hover-mode #wiki-modal {
+      pointer-events: auto;
+    }
+    /* Pinned (click) mode: show backdrop */
+    #wiki-modal-overlay.open.pinned-backdrop {
+      background: #000000aa;
+    }
     #wiki-modal {
       background: #1a1a1a;
       border: 1px solid #333;
@@ -736,7 +749,7 @@
     </div>
     <div id="lyrics"></div>
     <div id="wiki-modal-overlay" onclick="onWikiOverlayClick(event)">
-      <div id="wiki-modal" onmouseenter="_cancelWikiClose()" onmouseleave="_scheduleWikiClose(true)">
+      <div id="wiki-modal" onmouseenter="_cancelWikiClose()" onmouseleave="_scheduleWikiClose(true)" onmousedown="_pinWikiModal()">
         <button id="wiki-modal-close" onclick="closeWikiModal()">✕</button>
         <div id="wiki-modal-title"></div>
         <div id="wiki-modal-body"></div>
@@ -1013,6 +1026,8 @@
 
       const overlay = document.getElementById('wiki-modal-overlay');
       overlay.classList.add('open');
+      if (wikiHoverMode) overlay.classList.add('hover-mode');
+      else overlay.classList.remove('hover-mode');
       document.getElementById('wiki-modal-link').href = '#';
 
       // Serve from cache instantly — no flicker, no network wait
@@ -1045,8 +1060,17 @@
       }
     }
 
+    function _pinWikiModal() {
+      // Convert hover-mode to pinned (click) mode — stays open until explicitly closed
+      if (!wikiHoverMode) return;
+      wikiHoverMode = false;
+      _cancelWikiClose();
+      document.getElementById('wiki-modal-overlay').classList.remove('hover-mode');
+      document.getElementById('wiki-modal-overlay').classList.add('pinned-backdrop');
+    }
     function closeWikiModal() {
-      document.getElementById('wiki-modal-overlay').classList.remove('open');
+      const overlay = document.getElementById('wiki-modal-overlay');
+      overlay.classList.remove('open', 'hover-mode', 'pinned-backdrop');
       wikiHoverMode = false;
     }
 
