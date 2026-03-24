@@ -1124,7 +1124,6 @@
       starting:  { label: 'Starting…',                hint: 'Connecting to YouTube…' },
       captions:  { label: 'Fetching captions…',       hint: 'Looking for word-by-word timing in YouTube auto-captions' },
       lrclib:    { label: 'Searching lyrics…',        hint: 'No captions found — checking LRClib lyrics database' },
-      shironet:  { label: 'Searching Shironet…',      hint: 'Opening a headless browser for shironet.mako.co.il — typically 20–60 seconds' },
       cached:    { label: 'Loading from cache…',      hint: '' },
     };
     // Time-based escalation hints per stage (seconds → message)
@@ -1132,7 +1131,6 @@
       starting:  [[8,  'Cold start — server is waking up, hang tight…'], [20, 'Still starting… (Railway free tier wakes up slowly)']],
       captions:  [[10, 'YouTube is slow to respond — almost there…']],
       lrclib:    [[8,  'Checking multiple lyrics databases…']],
-      shironet:  [[20, 'Still searching Shironet… almost there'], [50, 'Shironet is slow today — please hold on']],
     };
 
     let _hintStage = null, _hintTimers = [];
@@ -1280,7 +1278,7 @@
         currentSongTitle = data.title || song.title;
         document.getElementById('song-title').textContent = currentSongTitle;
         renderCredits(data);
-        const sourceMap = { youtube_captions: 'YouTube captions', lrclib: 'LRClib', lrclib_plain: 'LRClib (no sync)', shironet: 'Shironet', none: 'none', cached: 'cached' };
+        const sourceMap = { youtube_captions: 'YouTube captions', lrclib: 'LRClib', lrclib_plain: 'LRClib (no sync)', none: 'none', cached: 'cached' };
         console.log('[Letras] Lyrics source:', sourceMap[data.source] || data.source || 'unknown');
         renderLyrics(segments, isSynced);
 
@@ -1352,7 +1350,6 @@
       _startHintTimers(s.stage);
       if (s.stage === 'captions') setProgress(40);
       else if (s.stage === 'lrclib') setProgress(60);
-      else if (s.stage === 'shironet') setProgress(80);
     }
 
     function setProgress(val) {

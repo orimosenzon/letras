@@ -139,19 +139,14 @@ def process_url(url: str, title: str = "", on_stage=None):
             if plain:
                 segments, source = plain, "lrclib_plain"
             else:
-                stage("shironet")
-                shironet = _try_shironet(title)
-                if shironet:
-                    segments, source = shironet, "shironet"
-                else:
-                    segments, source = [], "none"
+                segments, source = [], "none"
 
     credits = _fetch_credits(title)
     lang = _detect_language(_lyrics_text(segments))
     data = {
         "id": vid_id, "title": title, "url": url,
         "segments": segments, "source": source,
-        "synced": source not in ("lrclib_plain", "shironet"),
+        "synced": source != "lrclib_plain",
         "lyricist":  credits.get("lyricist"),
         "composer":  credits.get("composer"),
         "arranger":  credits.get("arranger"),
@@ -579,148 +574,6 @@ def _google_translate(text: str, source: str, target: str) -> str:
     if not translated:
         raise ValueError("Empty response from Google Translate")
     return translated
-
-
-def _try_shironet(title: str):
-    """Fetch Hebrew lyrics from Shironet using Playwright headless browser.
-    Returns static (unsynced) segments or None if not found.
-    """
-    try:
-        from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-    except ImportError:
-        return None
-
-    song_title, artist = _parse_title_artist(title)
-
-    # Build search queries — song title first (Shironet ranks by title match),
-    # then title+artist as fallback for disambiguation.
-    # Strip Latin transliteration to get pure Hebrew title.
-    he_only = re.sub(r'[a-zA-Z0-9\(\)\[\]\-]+', ' ', song_title).strip()
-    queries = []
-    # Start with the Hebrew-only version if it differs (e.g. "חלק מהזמן" from "Part of Time - חלק מהזמן")
-    if he_only and he_only != song_title:
-        queries.append(he_only)
-    queries.append(song_title)
-    if artist:
-        queries.append(f"{song_title} {artist}")
-
-    def _score_match(result_text: str) -> int:
-        """Score how well a Shironet result matches our song title (higher = better)."""
-        rt = result_text.lower()
-        st = song_title.lower()
-        art = artist.lower() if artist else ""
-        score = 0
-        if rt == st:
-            score += 10
-        elif st in rt:
-            score += 5
-        elif any(w in rt for w in st.split() if len(w) > 2):
-            score += 2
-        if art and art in rt:
-            score += 3
-        return score
-
-    # JS to hide headless browser fingerprint from Radware/PerimeterX detection
-    _stealth_js = """
-        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-        Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-        Object.defineProperty(navigator, 'languages', {get: () => ['he-IL', 'he', 'en-US', 'en']});
-        window.chrome = {runtime: {}};
-    """
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(
-            headless=True,
-            args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
-                  "--disable-blink-features=AutomationControlled"],
-        )
-        try:
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 800},
-                locale="he-IL",
-            )
-            context.add_init_script(_stealth_js)
-            page = context.new_page()
-
-            def _goto_and_wait(url, wait_selector, timeout=60000):
-                """Navigate and wait for a specific element (smart wait instead of fixed sleep)."""
-                try:
-                    page.goto(url, timeout=30000, wait_until="commit")
-                except PWTimeout:
-                    pass
-                try:
-                    page.wait_for_selector(wait_selector, timeout=timeout)
-                    return True
-                except PWTimeout:
-                    return False
-
-            song_href = None
-            for query in queries:
-                encoded = urllib.parse.quote(query)
-                found = _goto_and_wait(
-                    f"https://shironet.mako.co.il/searchSongs?q={encoded}",
-                    'a[href*="wrkid="]',
-                )
-                if not found:
-                    continue
-
-                # Results have type=lyrics in href (not type=words)
-                links = page.query_selector_all('a[href*="wrkid="][href*="type=lyrics"]')
-                candidates = []
-                for link in links[:15]:
-                    href = link.get_attribute("href")
-                    text = link.inner_text().strip()
-                    if href and text:
-                        # Get artist name from parent row for better scoring
-                        row_text = link.evaluate(
-                            "el => el.closest('tr') ? el.closest('tr').innerText : ''"
-                        )
-                        candidates.append((text, href, row_text))
-
-                if candidates:
-                    def _title_score(c):
-                        # Score only on song title match (not artist), to avoid
-                        # picking a different song just because artist name matches
-                        return _score_match(c[0])
-                    best = max(candidates, key=_title_score)
-                    if _title_score(best) > 0:
-                        song_href = best[1]
-                        break
-
-            if not song_href:
-                return None
-
-            # Navigate to the song page
-            song_url = (
-                f"https://shironet.mako.co.il{song_href}"
-                if song_href.startswith("/")
-                else song_href
-            )
-            found = _goto_and_wait(song_url, ".artist_lyrics_text", timeout=20000)
-            if not found:
-                return None
-
-            lyrics_el = page.query_selector(".artist_lyrics_text")
-            if not lyrics_el:
-                return None
-
-            raw = lyrics_el.inner_text()
-            lines = [l.strip() for l in raw.splitlines() if l.strip()]
-            if not lines:
-                return None
-
-            print(f"Using Shironet lyrics ({len(lines)} lines)")
-            return [{"text": line, "start": None, "end": None, "words": []} for line in lines]
-
-        finally:
-            try:
-                browser.close()
-            except Exception:
-                pass
 
 
 def fetch_wikipedia_summary(song_title: str, artist: str = "", lang: str = "en") -> dict:
