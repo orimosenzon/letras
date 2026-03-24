@@ -166,7 +166,7 @@ def _try_youtube_captions(url: str, vid_id: str):
     ydl_opts = {
         "writeautomaticsub": True,
         "writesubtitles": True,
-        "subtitleslangs": ["en", "en-orig"],
+        "subtitleslangs": ["he", "en", "en-orig", "es", "fr", "de", "ru", "ar", "pt", "it"],
         "subtitlesformat": "vtt",
         "skip_download": True,
         "outtmpl": vtt_base,
