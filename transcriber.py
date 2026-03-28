@@ -108,18 +108,19 @@ def process_url(url: str, title: str = "", on_stage=None):
             os.remove(transcript_path)
         else:
             stage("cached")
-            # Backfill credits if missing or from old search logic (credits_version < 5)
+            # Backfill credits if missing or from old search logic (credits_version < 6)
             # v3: added score-based confidence threshold to avoid wrong performers
             # v4: fixed bilingual title parsing (strip Latin transliteration suffixes)
             # v5: try both Artist-Song and Song-Artist orderings, pick best title match
-            if cached.get("credits_version", 1) < 5:
+            # v6: prefer YouTube artist if MusicBrainz performer doesn't match it
+            if cached.get("credits_version", 1) < 6:
                 credits = _fetch_credits(cached.get("title", title))
                 cached["lyricist"]  = credits.get("lyricist")
                 cached["composer"]  = credits.get("composer")
                 cached["arranger"]  = credits.get("arranger")
                 cached["performer"] = credits.get("performer")
                 cached["lang"] = _detect_language(_lyrics_text(cached.get("segments", [])))
-                cached["credits_version"] = 5
+                cached["credits_version"] = 6
                 with open(transcript_path, "w") as f:
                     json.dump(cached, f, ensure_ascii=False)
             return cached
@@ -152,7 +153,7 @@ def process_url(url: str, title: str = "", on_stage=None):
         "arranger":  credits.get("arranger"),
         "performer": credits.get("performer"),
         "lang": lang,
-        "credits_version": 5,
+        "credits_version": 6,
     }
     with open(transcript_path, "w") as f:
         json.dump(data, f, ensure_ascii=False)
@@ -469,6 +470,7 @@ def _fetch_credits(title: str) -> dict:
                 return len(q_words & r_words) / max(len(q_words), len(r_words))
             return 0.0
 
+        orig_artist = artist  # save before possible swap
         score, recordings = _mb_search_recording(song_title, artist, headers)
         sim = _title_sim(song_title, recordings[0]["title"]) if recordings else 0.0
         if artist:
@@ -490,6 +492,14 @@ def _fetch_credits(title: str) -> dict:
         artist_credits = rec.get("artist-credit", [])
         performer_names = [a["artist"]["name"] for a in artist_credits if isinstance(a, dict) and "artist" in a]
         performer = ", ".join(performer_names) if performer_names and score >= min_score else None
+
+        # If orig_artist from the YouTube title doesn't match MusicBrainz performer at all,
+        # prefer the YouTube artist — it's authoritative for the specific recording being played.
+        if orig_artist and performer:
+            orig_low = orig_artist.lower()
+            mb_low = performer.lower()
+            if orig_low not in mb_low and mb_low not in orig_low:
+                performer = orig_artist
 
         # Step 2: recording → work-rels + artist-rels (for arranger at recording level)
         req = urllib.request.Request(
