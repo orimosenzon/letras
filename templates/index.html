@@ -3,7 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Letras</title>
+  <title>{% if og and og.title != 'Letras' %}{{ og.title }} — Letras{% else %}Letras{% endif %}</title>
+  {% if og %}
+  <meta property="og:type" content="music.song">
+  <meta property="og:site_name" content="Letras">
+  <meta property="og:title" content="{{ og.title }}">
+  <meta property="og:description" content="{{ og.description }}">
+  <meta property="og:url" content="{{ og.url }}">
+  {% if og.image %}<meta property="og:image" content="{{ og.image }}">{% endif %}
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ og.title }}">
+  {% if og.image %}<meta name="twitter:image" content="{{ og.image }}">{% endif %}
+  {% endif %}
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1494,15 +1505,15 @@
     function updateUrl() {
       if (!currentVideoId) return;
       const params = new URLSearchParams();
-      params.set('v', currentVideoId);
-      if (currentSongTitle) params.set('title', currentSongTitle);
       if (ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
         const t = Math.floor(ytPlayer.getCurrentTime());
         if (t > 0) params.set('t', t);
       }
       const lang = document.getElementById('translate-select').value;
       if (lang) params.set('lang', lang);
-      history.replaceState(null, '', '?' + params.toString());
+      const base = '/song/' + currentVideoId;
+      const qs = params.toString();
+      history.replaceState(null, '', qs ? base + '?' + qs : base);
     }
 
     function startUrlUpdater() {
@@ -1517,15 +1528,15 @@
     function buildShareUrl(withTime) {
       if (!currentVideoId) return window.location.href;
       const params = new URLSearchParams();
-      params.set('v', currentVideoId);
-      if (currentSongTitle) params.set('title', currentSongTitle);
       if (withTime && ytPlayer && typeof ytPlayer.getCurrentTime === 'function') {
         const t = Math.floor(ytPlayer.getCurrentTime());
         if (t > 0) params.set('t', t);
       }
       const lang = document.getElementById('translate-select').value;
       if (lang) params.set('lang', lang);
-      return window.location.origin + window.location.pathname + '?' + params.toString();
+      const base = window.location.origin + '/song/' + currentVideoId;
+      const qs = params.toString();
+      return qs ? base + '?' + qs : base;
     }
 
     async function copyToClipboard(url, el, label) {
@@ -1585,7 +1596,9 @@
 
     window.addEventListener('load', async () => {
       const params = new URLSearchParams(window.location.search);
-      const v = params.get('v');
+      // Support both /?v=ID and /song/ID URL formats
+      const pathMatch = window.location.pathname.match(/^\/song\/([^/?]+)/);
+      const v = params.get('v') || (pathMatch && pathMatch[1]);
       if (v) {
         const title = params.get('title') || '';
         const startTime = parseFloat(params.get('t') || '0');

@@ -20,7 +20,39 @@ _jobs = {}
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", og=None)
+
+
+def _find_song_by_yt_id(yt_id):
+    """Search cached JSON files for one whose YouTube URL contains yt_id."""
+    import re
+    pattern = re.compile(r'[?&]v=' + re.escape(yt_id) + r'(&|$)')
+    for fname in os.listdir(STATIC_DIR):
+        if not fname.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(STATIC_DIR, fname)) as f:
+                data = json.load(f)
+            if pattern.search(data.get("url", "")):
+                return data
+        except Exception:
+            continue
+    return None
+
+
+@app.route("/song/<video_id>")
+def song_page(video_id):
+    og = {"video_id": video_id, "url": request.url}
+    data = _find_song_by_yt_id(video_id)
+    if data:
+        og["title"] = data.get("title", "Letras")
+        og["description"] = ""
+        og["image"] = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+    else:
+        og["title"] = "Letras"
+        og["description"] = "Song lyrics"
+        og["image"] = f"https://img.youtube.com/vi/{video_id}/maxresdefault.jpg"
+    return render_template("index.html", og=og)
 
 
 @app.route("/api/process", methods=["POST"])
