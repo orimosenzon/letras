@@ -503,6 +503,38 @@
     #lyrics::-webkit-scrollbar-track { background: transparent; }
     #lyrics::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 
+    /* Main content wrapper (player + lyrics) */
+    #main-content {
+      flex: 1;
+      width: 100%;
+      max-width: 700px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Desktop: side-by-side layout */
+    @media (min-width: 750px) {
+      #top-bar { max-width: 1200px; }
+      #main-content {
+        flex-direction: row;
+        max-width: 1200px;
+        gap: 28px;
+        align-items: stretch;
+      }
+      #player-top {
+        width: 380px;
+        max-width: 380px;
+        flex-shrink: 0;
+        align-items: flex-start;
+      }
+      #yt-player-wrap { max-height: none; }
+      #lyrics {
+        max-width: none;
+        height: 100%;
+      }
+    }
+
     /* Ambient background */
     #ambient-bg {
       position: fixed;
@@ -566,6 +598,7 @@
     #screen-player.zen #player-footer { display: none !important; }
     #screen-player.zen #zen-exit { display: block; }
     #screen-player.zen #lyrics { flex: 1; }
+    #screen-player.zen #main-content { max-width: 700px; }
     #screen-player.zen .word { font-size: 1.6rem; }
     #screen-player.zen .segment { padding: 18px; }
     #screen-player.zen .segment:not(.active) { opacity: 0.3; }
@@ -738,6 +771,7 @@
         <button id="zen-btn" onclick="toggleZen()">⛶ Zen</button>
       </div>
     </div>
+    <div id="main-content">
     <div id="player-top">
       <div id="status"></div>
       <div id="status-hint"></div>
@@ -756,6 +790,7 @@
       </div>
     </div>
     <div id="lyrics"></div>
+    </div>
     <div id="wiki-modal-overlay" onclick="onWikiOverlayClick(event)">
       <div id="wiki-modal" onmouseenter="_cancelWikiClose()" onmouseleave="_scheduleWikiClose(true)" onmousedown="_pinWikiModal()">
         <button id="wiki-modal-close" onclick="closeWikiModal()">✕</button>
