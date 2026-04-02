@@ -136,9 +136,13 @@ def process_url(url: str, title: str = "", on_stage=None):
         if lrc:
             segments, source = lrc, "lrclib"
         else:
-            plain = _try_lrclib_plain(title) or _try_lyrics_ovh(title)
+            plain_lrclib = _try_lrclib_plain(title)
+            plain_genius = _try_genius(title) if not plain_lrclib else None
+            plain_ovh = _try_lyrics_ovh(title) if not (plain_lrclib or plain_genius) else None
+            plain = plain_lrclib or plain_genius or plain_ovh
             if plain:
-                segments, source = plain, "lrclib_plain"
+                source = "genius" if plain is plain_genius else "lrclib_plain"
+                segments = plain
             else:
                 segments, source = [], "none"
 
@@ -264,6 +268,37 @@ def _ts(s: str) -> float:
     parts = s.split(':')
     h, m, sec = int(parts[0]), int(parts[1]), float(parts[2])
     return h * 3600 + m * 60 + sec
+
+
+def _try_genius(title: str) -> list:
+    """Fetch plain lyrics from Genius API. Requires GENIUS_TOKEN env var."""
+    token = os.environ.get("GENIUS_TOKEN")
+    if not token:
+        return None
+    try:
+        import lyricsgenius
+        genius = lyricsgenius.Genius(
+            token,
+            skip_non_songs=True,
+            excluded_terms=["(Remix)", "(Live)", "(Acoustic)", "(Instrumental)"],
+            remove_section_headers=True,
+            verbose=False,
+            timeout=10,
+        )
+        song_title, artist = _parse_title_artist(title)
+        song = genius.search_song(song_title, artist or "")
+        if not song or not song.lyrics:
+            return None
+        lines = [l.strip() for l in song.lyrics.split("\n") if l.strip()]
+        # Genius prepends title in first line like "Song Title Lyrics\n" — skip it
+        if lines and lines[0].lower().endswith("lyrics"):
+            lines = lines[1:]
+        if lines:
+            print(f"Using Genius lyrics ({len(lines)} lines)")
+            return [{"text": line, "start": None, "end": None, "words": []} for line in lines]
+    except Exception as e:
+        print(f"Genius fetch failed: {e}")
+    return None
 
 
 def _try_lyrics_ovh(title: str) -> list:
