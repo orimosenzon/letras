@@ -510,16 +510,18 @@
       #share-btn { padding: 5px 10px; font-size: 0.78rem; }
       #share-menu { right: auto; left: 0; }
       #translation-bar { gap: 6px; }
-      #yt-player-wrap { max-height: 22vh; }
-      #offset-controls button { padding: 4px 8px; font-size: 0.72rem; width: 44px; }
-      #offset-display { font-size: 0.7rem; width: 44px; }
+      #video-row { flex-direction: column; gap: 4px; margin-bottom: 4px; }
+      #yt-player-wrap { max-height: 20vh; width: 100%; }
+      #offset-controls { flex-direction: row; gap: 4px; justify-content: center; }
+      #offset-controls button { padding: 3px 8px; font-size: 0.7rem; width: auto; }
+      #offset-display { font-size: 0.7rem; width: auto; min-width: 36px; text-align: center; }
       .word { font-size: 0.95rem; }
       .translation { font-size: 0.82rem; }
       #lyrics { gap: 7px; padding-bottom: 12px; }
       .segment { padding: 8px 11px; }
     }
     @media (max-width: 500px) and (max-height: 700px) {
-      #yt-player-wrap { max-height: 17vh; }
+      #yt-player-wrap { max-height: 15vh; }
     }
 
     #lyrics {
