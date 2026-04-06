@@ -137,8 +137,11 @@ def process_url(url: str, title: str = "", on_stage=None):
             segments, source = lrc, "lrclib"
         else:
             plain_lrclib = _try_lrclib_plain(title)
+            print(f"Pipeline: lrclib_plain={'found' if plain_lrclib else 'miss'}")
             plain_genius = _try_genius(title) if not plain_lrclib else None
+            print(f"Pipeline: genius={'found' if plain_genius else ('skip' if plain_lrclib else 'miss')}")
             plain_ovh = _try_lyrics_ovh(title) if not (plain_lrclib or plain_genius) else None
+            print(f"Pipeline: lyrics_ovh={'found' if plain_ovh else ('skip' if (plain_lrclib or plain_genius) else 'miss')}")
             plain = plain_lrclib or plain_genius or plain_ovh
             if plain:
                 source = "genius" if plain is plain_genius else "lrclib_plain"
