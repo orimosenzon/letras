@@ -239,6 +239,8 @@
     .badge-synced { background: #0d9488; color: #fff; }
     .badge-plain  { background: #3a3a3a; color: #bbb; }
     .badge-none   { background: #2a2a2a; color: #666; }
+    .badge-pending { background: #2a2a2a; color: #888; animation: badge-pulse 1.2s ease-in-out infinite; }
+    @keyframes badge-pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
     .song-card:hover {
       transform: translateY(-4px);
       box-shadow: 0 8px 24px #0d948844;
@@ -1245,15 +1247,17 @@
 
     const STAGE_LABELS = {
       starting:  { label: 'Starting…',                hint: 'Connecting to YouTube…' },
-      captions:  { label: 'Fetching captions…',       hint: 'Looking for word-by-word timing in YouTube auto-captions' },
-      lrclib:    { label: 'Searching lyrics…',        hint: 'No captions found — checking LRClib lyrics database' },
+      lrclib:    { label: 'Searching synced lyrics…', hint: 'Checking the LRClib lyrics database' },
+      captions:  { label: 'Fetching captions…',       hint: 'No synced lyrics found — trying YouTube captions' },
+      plain:     { label: 'Searching lyrics…',        hint: 'Checking plain-text lyrics sources' },
       cached:    { label: 'Loading from cache…',      hint: '' },
     };
     // Time-based escalation hints per stage (seconds → message)
     const STAGE_HINTS_TIMED = {
       starting:  [[8,  'Cold start — server is waking up, hang tight…'], [20, 'Still starting… (Railway free tier wakes up slowly)']],
+      lrclib:    [[8,  'Trying several search variants…']],
       captions:  [[10, 'YouTube is slow to respond — almost there…']],
-      lrclib:    [[8,  'Checking multiple lyrics databases…']],
+      plain:     [[8,  'Checking multiple lyrics databases…']],
     };
 
     let _hintStage = null, _hintTimers = [];
@@ -1319,28 +1323,58 @@
       btn.disabled = false;
     }
 
+    const BADGES = {
+      synced:  { cls: 'badge-synced',  label: '♪ Synced' },
+      plain:   { cls: 'badge-plain',   label: '♪ Lyrics' },
+      none:    { cls: 'badge-none',    label: '? Unknown' },
+      pending: { cls: 'badge-pending', label: '⋯ Checking' },
+    };
+    let _searchGen = 0;   // invalidates in-flight badge checks from a previous search
+
+    function _applyCardStatus(card, status) {
+      card.className = 'song-card ' +
+        (status === 'synced' ? 'song-card--synced' : status === 'none' ? 'song-card--no-lrc' : '');
+      const badge = BADGES[status] || BADGES.none;
+      const el = card.querySelector('.song-card-badge');
+      el.className = 'song-card-badge ' + badge.cls;
+      el.textContent = badge.label;
+    }
+
     function renderResults(results) {
       const grid = document.getElementById('results-grid');
       grid.innerHTML = '';
-      const BADGES = {
-        synced: { cls: 'badge-synced', label: '♪ Synced' },
-        plain:  { cls: 'badge-plain',  label: '♪ Lyrics' },
-        none:   { cls: 'badge-none',   label: '? Unknown' },
-      };
+      const gen = ++_searchGen;
+      const pendingChecks = [];
       results.forEach(r => {
         const status = r.lrc_status || (r.has_lrc ? 'synced' : 'none');
-        const cardCls = status === 'synced' ? 'song-card--synced' : status === 'none' ? 'song-card--no-lrc' : '';
-        const badge = BADGES[status] || BADGES.none;
         const card = document.createElement('div');
-        card.className = 'song-card ' + cardCls;
         card.innerHTML = `
-          <div class="song-card-badge ${badge.cls}">${badge.label}</div>
+          <div class="song-card-badge"></div>
           <img src="${r.thumbnail}" alt="" loading="lazy" onerror="this.style.background='#222'">
           <div class="song-card-title">${r.title}</div>
         `;
+        _applyCardStatus(card, status);
         card.onclick = () => selectSong(r);
         grid.appendChild(card);
+        if (status === 'pending') pendingChecks.push({ r, card });
       });
+
+      // Badges resolve in the background — the results screen shows instantly.
+      // Checks run 3 at a time in card order, so the top row resolves first
+      // instead of all 8 competing for the server's LRClib budget.
+      let idx = 0;
+      function checkNext() {
+        if (gen !== _searchGen || idx >= pendingChecks.length) return;
+        const { r, card } = pendingChecks[idx++];
+        const params = new URLSearchParams({ title: r.title });
+        if (r.duration) params.set('duration', r.duration);
+        fetch(`/api/lrc_check?${params}`)
+          .then(res => res.json())
+          .then(d => { if (gen === _searchGen) _applyCardStatus(card, d.status || 'none'); })
+          .catch(() => { if (gen === _searchGen) _applyCardStatus(card, 'none'); })
+          .finally(checkNext);
+      }
+      for (let i = 0; i < 3; i++) checkNext();
     }
 
     async function selectSong(song, startTime = 0, autoLang = '') {
@@ -1379,7 +1413,7 @@
         const res = await fetch('/api/process', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: song.url, title: song.title })
+          body: JSON.stringify({ url: song.url, title: song.title, duration: song.duration || null })
         });
         const data = await res.json();
 
@@ -1401,7 +1435,7 @@
         currentSongTitle = data.title || song.title;
         document.getElementById('song-title').textContent = currentSongTitle;
         renderCredits(data);
-        const sourceMap = { youtube_captions: 'YouTube captions', lrclib: 'LRClib', lrclib_plain: 'LRClib (no sync)', none: 'none', cached: 'cached' };
+        const sourceMap = { youtube_captions: 'YouTube captions', lrclib: 'LRClib', lrclib_plain: 'LRClib (no sync)', genius: 'Genius (no sync)', lyrics_ovh: 'lyrics.ovh (no sync)', none: 'none', cached: 'cached' };
         console.log('[Letras] Lyrics source:', sourceMap[data.source] || data.source || 'unknown');
         renderLyrics(segments, isSynced);
 
@@ -1471,8 +1505,9 @@
       const info = STAGE_LABELS[s.stage];
       setStatus(info ? info.label : '');
       _startHintTimers(s.stage);
-      if (s.stage === 'captions') setProgress(40);
-      else if (s.stage === 'lrclib') setProgress(60);
+      if (s.stage === 'lrclib') setProgress(40);
+      else if (s.stage === 'captions') setProgress(60);
+      else if (s.stage === 'plain') setProgress(75);
     }
 
     function setProgress(val) {

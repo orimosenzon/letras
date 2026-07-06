@@ -11,7 +11,7 @@ import time
 import urllib.request
 import urllib.parse
 from flask import Flask, render_template, jsonify, request
-from transcriber import process_url, url_id, STATIC_DIR, search_songs, translate_segments, fetch_wikipedia_summary, _google_translate
+from transcriber import process_url, url_id, STATIC_DIR, search_songs, translate_segments, fetch_wikipedia_summary, _google_translate, _check_lrclib
 
 app = Flask(__name__)
 
@@ -59,6 +59,7 @@ def song_page(video_id):
 def process():
     url = request.json.get("url", "").strip()
     title = request.json.get("title", "").strip()
+    duration = request.json.get("duration")
     if not url:
         return jsonify({"error": "No URL provided"}), 400
     job_id = url_id(url)
@@ -69,7 +70,7 @@ def process():
         _jobs[job_id]["elapsed"] = round(time.time() - _jobs[job_id]["started_at"], 1)
 
     try:
-        data = process_url(url, title, on_stage)
+        data = process_url(url, title, on_stage, duration)
         _jobs[job_id]["stage"] = "done"
         return jsonify(data)
     except Exception as e:
@@ -119,6 +120,18 @@ def api_search():
     results = search_songs(q)
     return jsonify({"results": results})
 
+
+
+@app.route("/api/lrc_check")
+def api_lrc_check():
+    title = request.args.get("title", "").strip()
+    duration = request.args.get("duration", type=float)
+    if not title:
+        return jsonify({"status": "none"})
+    try:
+        return jsonify({"status": _check_lrclib(title, duration)})
+    except Exception:
+        return jsonify({"status": "none"})
 
 
 @app.route("/api/translate", methods=["POST"])
