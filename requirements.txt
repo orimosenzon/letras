@@ -2,3 +2,4 @@ flask
 gunicorn
 yt-dlp
 lyricsgenius
+python-docx

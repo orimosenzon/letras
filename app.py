@@ -10,8 +10,9 @@ import json
 import time
 import urllib.request
 import urllib.parse
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 from transcriber import process_url, url_id, STATIC_DIR, search_songs, translate_segments, fetch_wikipedia_summary, _google_translate, _check_lrclib
+from docx_export import build_docx, safe_filename
 
 app = Flask(__name__)
 
@@ -134,6 +135,27 @@ def api_lrc_check():
         return jsonify({"status": "none"})
 
 
+def _load_song(song_id):
+    """Return (data, cache_path) for a cached song, or (None, path) when it isn't cached."""
+    cache_path = os.path.join(STATIC_DIR, f"{song_id}.json")
+    if not os.path.exists(cache_path):
+        return None, cache_path
+    with open(cache_path) as f:
+        return json.load(f), cache_path
+
+
+def _translations_for(data, cache_path, target_lang):
+    """Translated lines for a song, from cache or freshly translated (and then cached)."""
+    cached = data.get("translations", {})
+    if target_lang in cached:
+        return cached[target_lang]
+    translated = translate_segments(data["segments"], target_lang, data.get("lang"))
+    data.setdefault("translations", {})[target_lang] = translated
+    with open(cache_path, "w") as f:
+        json.dump(data, f, ensure_ascii=False)
+    return translated
+
+
 @app.route("/api/translate", methods=["POST"])
 def translate():
     song_id = request.json.get("song_id", "").strip()
@@ -141,25 +163,43 @@ def translate():
     if not song_id or not target_lang:
         return jsonify({"error": "missing params"}), 400
 
-    cache_path = os.path.join(STATIC_DIR, f"{song_id}.json")
-    if not os.path.exists(cache_path):
+    data, cache_path = _load_song(song_id)
+    if data is None:
         return jsonify({"error": "song not found"}), 404
 
-    with open(cache_path) as f:
-        data = json.load(f)
-
-    translations = data.get("translations", {})
-    if target_lang in translations:
-        return jsonify({"translations": translations[target_lang]})
-
     try:
-        translated = translate_segments(data["segments"], target_lang, data.get("lang"))
-        data.setdefault("translations", {})[target_lang] = translated
-        with open(cache_path, "w") as f:
-            json.dump(data, f, ensure_ascii=False)
-        return jsonify({"translations": translated})
+        return jsonify({"translations": _translations_for(data, cache_path, target_lang)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/export/docx/<song_id>")
+def export_docx(song_id):
+    """Download the lyrics as a Word document, with the translation when a language is given."""
+    target_lang = request.args.get("lang", "").strip()
+
+    data, cache_path = _load_song(song_id)
+    if data is None:
+        return jsonify({"error": "song not found"}), 404
+    if not data.get("segments"):
+        return jsonify({"error": "no lyrics for this song"}), 404
+
+    translations = None
+    if target_lang and target_lang != data.get("lang"):
+        try:
+            translations = _translations_for(data, cache_path, target_lang)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    else:
+        target_lang = ""
+
+    buf = build_docx(data, translations, target_lang)
+    return send_file(
+        buf,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        as_attachment=True,
+        download_name=safe_filename(data.get("title", ""), target_lang),
+    )
 
 
 @app.route("/api/wikipedia", methods=["POST"])

@@ -103,6 +103,18 @@
       transition: background 0.2s, color 0.2s, border-color 0.2s;
     }
     #share-btn:hover { background: #1a1a1a; color: #f0f0f0; border-color: #666; }
+    #docx-btn {
+      background: transparent;
+      color: #aaa;
+      border: 1px solid #444;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    #docx-btn:hover { background: #1a1a1a; color: #f0f0f0; border-color: #666; }
+    #docx-btn:disabled { background: transparent; color: #666; border-color: #333; cursor: default; }
     #share-menu {
       display: none;
       position: absolute;
@@ -518,6 +530,7 @@
       }
       #share-from-here { display: none !important; }
       #share-btn { padding: 5px 10px; font-size: 0.78rem; }
+      #docx-btn { padding: 5px 10px; font-size: 0.78rem; }
       #share-menu { right: auto; left: 0; }
       #translation-bar { gap: 6px; }
       #video-row { flex-direction: column; gap: 4px; margin-bottom: 4px; }
@@ -815,6 +828,7 @@
             <option value="pt">Português</option>
             <option value="ja">日本語</option>
           </select>
+          <button id="docx-btn" onclick="downloadDocx()" title="Download lyrics as a Word document (includes the translation when one is shown)">⬇ Word</button>
           <div id="share-wrap">
             <button id="share-btn" onclick="toggleShareMenu(event)">🔗 Share</button>
             <span id="share-from-here" onclick="shareFromHere()">· from here (0:00)</span>
@@ -1714,6 +1728,43 @@
     }
     function onZenKeydown(e) {
       if (e.key === 'Escape') toggleZen();
+    }
+
+    // Download the lyrics as a Word document, with the translation currently on screen.
+    async function downloadDocx() {
+      if (!currentSongId) return;
+      const btn = document.getElementById('docx-btn');
+      const lang = document.getElementById('translate-select').value;
+      const url = `/api/export/docx/${currentSongId}` + (lang ? `?lang=${encodeURIComponent(lang)}` : '');
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ Word';
+      try {
+        // Fetched rather than navigated to, so a server-side failure surfaces as a message
+        // instead of dropping the user on a JSON error page.
+        const res = await fetch(url);
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          setStatus('Word export failed: ' + (err.error || res.status), true);
+          return;
+        }
+        const blob = await res.blob();
+        const name = decodeURIComponent(
+          (res.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''([^;]+)/)?.[1] || ''
+        ) || 'lyrics.docx';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      } catch (e) {
+        setStatus('Word export error: ' + e.message, true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = label;
+      }
     }
 
     // Share menu
