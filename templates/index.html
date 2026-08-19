@@ -103,18 +103,6 @@
       transition: background 0.2s, color 0.2s, border-color 0.2s;
     }
     #share-btn:hover { background: #1a1a1a; color: #f0f0f0; border-color: #666; }
-    #docx-btn {
-      background: transparent;
-      color: #aaa;
-      border: 1px solid #444;
-      padding: 6px 14px;
-      font-size: 0.85rem;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: background 0.2s, color 0.2s, border-color 0.2s;
-    }
-    #docx-btn:hover { background: #1a1a1a; color: #f0f0f0; border-color: #666; }
-    #docx-btn:disabled { background: transparent; color: #666; border-color: #333; cursor: default; }
     #share-menu {
       display: none;
       position: absolute;
@@ -146,6 +134,7 @@
     }
     .share-item:hover { background: #252525; color: #fff; }
     .share-item.copied { color: #5f5; }
+    .share-item:disabled { color: #666; background: none; cursor: default; }
     .share-item + .share-item { border-top: 1px solid #252525; }
     #share-from-here {
       display: none;
@@ -530,7 +519,6 @@
       }
       #share-from-here { display: none !important; }
       #share-btn { padding: 5px 10px; font-size: 0.78rem; }
-      #docx-btn { padding: 5px 10px; font-size: 0.78rem; }
       #share-menu { right: auto; left: 0; }
       #translation-bar { gap: 6px; }
       #video-row { flex-direction: column; gap: 4px; margin-bottom: 4px; }
@@ -828,7 +816,6 @@
             <option value="pt">Português</option>
             <option value="ja">日本語</option>
           </select>
-          <button id="docx-btn" onclick="downloadDocx()" title="Download lyrics as a Word document (includes the translation when one is shown)">⬇ Word</button>
           <div id="share-wrap">
             <button id="share-btn" onclick="toggleShareMenu(event)">🔗 Share</button>
             <span id="share-from-here" onclick="shareFromHere()">· from here (0:00)</span>
@@ -839,6 +826,7 @@
               <button class="share-item" onclick="shareMenuWhatsapp()">💬 WhatsApp</button>
               <button class="share-item" onclick="shareMenuTwitter()">🐦 Twitter / X</button>
               <button class="share-item" id="share-native" onclick="shareMenuNative()" style="display:none">📲 Share via...</button>
+              <button class="share-item" id="docx-item" onclick="downloadDocx()" title="Download lyrics as a Word document (includes the translation when one is shown)">⬇ Download Word</button>
             </div>
           </div>
         </div>
@@ -1733,12 +1721,13 @@
     // Download the lyrics as a Word document, with the translation currently on screen.
     async function downloadDocx() {
       if (!currentSongId) return;
-      const btn = document.getElementById('docx-btn');
+      const btn = document.getElementById('docx-item');
       const lang = document.getElementById('translate-select').value;
       const url = `/api/export/docx/${currentSongId}` + (lang ? `?lang=${encodeURIComponent(lang)}` : '');
       const label = btn.textContent;
+      // The menu stays open while the export runs, so the ⏳ label is what the user sees.
       btn.disabled = true;
-      btn.textContent = '⏳ Word';
+      btn.textContent = '⏳ Preparing…';
       try {
         // Fetched rather than navigated to, so a server-side failure surfaces as a message
         // instead of dropping the user on a JSON error page.
@@ -1749,9 +1738,13 @@
           return;
         }
         const blob = await res.blob();
-        const name = decodeURIComponent(
-          (res.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''([^;]+)/)?.[1] || ''
-        ) || 'lyrics.docx';
+        // Flask only emits the filename*=UTF-8'' form for non-ASCII titles, so fall back
+        // to the plain filename="..." parameter before giving up on a generic name.
+        const cd = res.headers.get('Content-Disposition') || '';
+        const name =
+          decodeURIComponent(cd.match(/filename\*=UTF-8''([^;]+)/)?.[1] || '') ||
+          cd.match(/filename="([^"]+)"/)?.[1] ||
+          'lyrics.docx';
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = name;
@@ -1764,6 +1757,7 @@
       } finally {
         btn.disabled = false;
         btn.textContent = label;
+        closeShareMenu();
       }
     }
 
