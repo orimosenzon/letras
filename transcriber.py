@@ -7,6 +7,7 @@
 
 import os
 import re
+import html
 import json
 import hashlib
 import glob as glob_mod
@@ -16,6 +17,7 @@ import time
 import threading
 import urllib.request
 import urllib.parse
+import urllib.error
 import concurrent.futures
 import yt_dlp
 
@@ -40,12 +42,79 @@ def url_id(url: str) -> str:
     return hashlib.md5(url.encode()).hexdigest()[:12]
 
 
-def search_songs(query: str) -> list:
-    """Search YouTube and return candidate songs immediately.
+YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
+# After a quota error, skip the Data API for an hour rather than paying a failed
+# round-trip on every search (the daily quota resets at midnight Pacific anyway).
+_YT_API_PAUSED_UNTIL = 0.0
+_ISO_DURATION = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
 
-    Lyrics availability is NOT checked here (LRClib takes ~3s per query) —
-    the frontend fetches /api/lrc_check per result and fills badges in as
-    they resolve, so the results screen appears right after the YouTube search.
+
+def _iso_duration_seconds(s: str):
+    """'PT1H26M59S' → 5219. None when the string is missing or malformed."""
+    m = _ISO_DURATION.fullmatch(s or "")
+    if not m:
+        return None
+    h, mi, se = (int(x) if x else 0 for x in m.groups())
+    return h * 3600 + mi * 60 + se
+
+
+def _search_youtube_api(query: str):
+    """YouTube Data API v3 search → [{id, title, duration}], or None on any failure.
+
+    Two calls: search.list (100 quota units) for the ids and titles, then
+    videos.list (1 unit) for durations, which search.list doesn't return.
+    None (not []) tells the caller to fall back to yt-dlp.
+    """
+    global _YT_API_PAUSED_UNTIL
+    if time.time() < _YT_API_PAUSED_UNTIL:
+        return None
+    t0 = time.time()
+    try:
+        params = urllib.parse.urlencode({
+            "part": "snippet", "type": "video", "maxResults": 10, "q": query, "key": YOUTUBE_API_KEY,
+        })
+        req = urllib.request.Request(f"https://www.googleapis.com/youtube/v3/search?{params}",
+                                     headers={"User-Agent": "LetrasApp/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            found = json.loads(resp.read())
+        entries = [{"id": it["id"]["videoId"], "title": html.unescape(it["snippet"]["title"]), "duration": None}
+                   for it in found.get("items", []) if it.get("id", {}).get("videoId")]
+        if not entries:
+            # search.list occasionally returns an empty page for a query that has plenty of
+            # hits a second later — let yt-dlp answer rather than show "no songs found"
+            log.warning(f"youtube api returned 0 entries {time.time()-t0:.1f}s [{query!r}] — falling back to yt-dlp")
+            return None
+        params = urllib.parse.urlencode({
+            "part": "contentDetails", "id": ",".join(e["id"] for e in entries), "key": YOUTUBE_API_KEY,
+        })
+        req = urllib.request.Request(f"https://www.googleapis.com/youtube/v3/videos?{params}",
+                                     headers={"User-Agent": "LetrasApp/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            details = json.loads(resp.read())
+        durations = {it["id"]: _iso_duration_seconds(it.get("contentDetails", {}).get("duration"))
+                     for it in details.get("items", [])}
+        for e in entries:
+            e["duration"] = durations.get(e["id"])
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", "replace")[:300]
+        if e.code == 403 and "quota" in body.lower():
+            _YT_API_PAUSED_UNTIL = time.time() + 3600
+            log.warning(f"youtube api quota exhausted — falling back to yt-dlp for an hour [{query!r}]")
+        else:
+            log.warning(f"youtube api FAILED {time.time()-t0:.1f}s HTTP {e.code} [{query!r}]: {body}")
+        return None
+    except Exception as e:
+        log.warning(f"youtube api FAILED {time.time()-t0:.1f}s [{query!r}]: {e}")
+        return None
+    log.info(f"youtube api search {time.time()-t0:.1f}s [{query!r}] {len(entries)} entries")
+    return entries
+
+
+def _search_youtube_ytdlp(query: str):
+    """yt-dlp's ytsearch → [{id, title, duration}], or None on failure.
+
+    Keyless, but scrapes YouTube and is the part of the stack most likely to
+    break in production (bot detection, 429s, extractor churn).
     """
     ydl_opts = {
         "quiet": True,
@@ -59,14 +128,29 @@ def search_songs(query: str) -> list:
             info = ydl.extract_info(f"ytsearch10:{query}", download=False)
     except Exception as e:
         log.error(f"youtube search FAILED {time.time()-t0:.1f}s [{query!r}]: {e}")
-        return []
+        return None
     log.info(f"youtube search {time.time()-t0:.1f}s [{query!r}] "
              f"{len(info.get('entries') or [])} entries")
+    return [{"id": e["id"], "title": e.get("title", "Unknown"), "duration": e.get("duration")}
+            for e in (info.get("entries") or []) if e and e.get("id")]
+
+
+def search_songs(query: str) -> list:
+    """Search YouTube and return candidate songs immediately.
+
+    The Data API is used when YOUTUBE_API_KEY is set, with yt-dlp as the
+    fallback for any failure (quota, network); without a key it's yt-dlp only.
+
+    Lyrics availability is NOT checked here (LRClib takes ~3s per query) —
+    the frontend fetches /api/lrc_check per result and fills badges in as
+    they resolve, so the results screen appears right after the YouTube search.
+    """
+    entries = _search_youtube_api(query) if YOUTUBE_API_KEY else None
+    if entries is None:
+        entries = _search_youtube_ytdlp(query) or []
 
     candidates = []
-    for entry in (info.get("entries") or []):
-        if not entry or not entry.get("id"):
-            continue
+    for entry in entries:
         vid_id = entry["id"]
         duration = entry.get("duration")
         candidates.append({
@@ -149,13 +233,18 @@ _JUNK_WORDS = re.compile(
     r'original|live|full|album|clip|visualizer|mv|19\d\d|20\d\d)\b',
     re.IGNORECASE,
 )
+# Hebrew uploaders' equivalents: "(קליפ רשמי)", "- כתוביות", "לייב", "אודיו". \b doesn't
+# work for Hebrew letters, so these are matched between whitespace/edges instead.
+_JUNK_WORDS_HE = re.compile(
+    r'(?<!\S)(ה?קליפ|ה?רשמי|כתוביות|לייב|אודיו|ה?גרסה|ברצף|הופעה)(?!\S)'
+)
 
 
 def _strip_junk(s: str) -> str:
     """Remove YouTube-title junk words; returns original if stripping empties it."""
     if not s:
         return s
-    stripped = _norm_ws(_JUNK_WORDS.sub(' ', s))
+    stripped = _norm_ws(_JUNK_WORDS_HE.sub(' ', _JUNK_WORDS.sub(' ', s)))
     return stripped or s
 
 
@@ -217,6 +306,9 @@ def _lrclib_search(title: str, duration=None, max_waves=None) -> list:
     if artist_c:
         # YouTube titles can be "Song - Artist" as well as "Artist - Song"
         variants.append({"track_name": artist_c, "artist_name": song_c})
+        # ...and when the "artist" part is really the song, the artist part alone is the
+        # query that finds it ("הבוקר את הולכת - רמי קליינשטיין והראל סקעת")
+        variants.append({"q": artist_c})
     variants.append({"q": _strip_junk(cleaned.replace(' - ', ' '))})
     variants.append({"q": cleaned})
 
@@ -288,9 +380,13 @@ def _pick_lrclib_result(results: list, title: str, duration=None, want_synced=Tr
         # The swapped assignment counts only with real evidence of reversal
         # (result's artistName resembles our parsed "song") — otherwise a result
         # whose track name merely CONTAINS the artist (e.g. 'נעמי שמר / אנשים
-        # טובים') would hijack the pick.
+        # טובים') would hijack the pick. A track name IDENTICAL to our "artist" plus
+        # any word in common on the other side is evidence too: 'הבוקר את הולכת -
+        # רמי קליינשטיין והראל סקעת' vs LRClib's 'רמי קלינשטיין — הבוקר את הולכת'.
         a1 = 2 * _sim(song, track) + _sim(artist or "", art)
-        a2 = 2 * _sim(artist or "", track) + _sim(song, art) if artist and _sim(song, art) >= 0.5 else -1.0
+        swapped = bool(artist) and (_sim(song, art) >= 0.5 or
+                                    (_sim(artist, track) == 1.0 and _sim(song, art) > 0))
+        a2 = 2 * _sim(artist or "", track) + _sim(song, art) if swapped else -1.0
         s, track_sim = (a1, _sim(song, track)) if a1 >= a2 else (a2, _sim(artist or "", track))
         if duration and r.get("duration"):
             diff = abs(float(r["duration"]) - float(duration))
@@ -739,6 +835,10 @@ def _parse_title_artist(title: str):
             if is_non_latin(segments[0]):
                 kept = [s for s in segments if is_non_latin(s)]
                 song = ' - '.join(kept) if kept else segments[0]
+        # 'נעמי שמר- "ירושלים של זהב"- כתוביות': the quoted phrase is the song, the rest is noise
+        quoted = re.search(r'["“״]([^"”״]+)["”״]', song)
+        if quoted and quoted.group(1).strip():
+            song = quoted.group(1).strip()
         return song, artist
     # Handle format: Artist "Song Title" extra info  (e.g. live on Ed Sullivan)
     quote_match = re.search(r'["\u201c]([^"\u201d]+)["\u201d]', cleaned)

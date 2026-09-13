@@ -11,6 +11,18 @@ import time
 import urllib.request
 import urllib.parse
 from flask import Flask, render_template, jsonify, request, send_file
+
+# Local-dev convenience: a gitignored .env next to app.py (KEY=VALUE lines) feeds the
+# environment before transcriber reads it. Real env vars win; Railway sets them directly.
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 from transcriber import process_url, url_id, STATIC_DIR, search_songs, translate_segments, fetch_wikipedia_summary, _google_translate, _check_lrclib
 from docx_export import build_docx, safe_filename
 

@@ -15,6 +15,8 @@ Paste any YouTube link → get real-time synchronized lyrics with word-level hig
 
 No Whisper, no heavy ML — just smart use of existing data sources.
 
+**Keyboard, while a song plays:** `Space` play/pause · `↑ ↓ ← →` previous/next line · `f` fullscreen (video and lyrics together) · `m` mute · `Esc` leave Zen mode.
+
 ---
 
 ## How lyrics are sourced
@@ -44,7 +46,8 @@ The search endpoint doesn't just return YouTube results — it filters them in p
 | Layer | Tool |
 |---|---|
 | Backend | Python + Flask |
-| YouTube audio & captions | yt-dlp |
+| YouTube search | YouTube Data API v3 (with `YOUTUBE_API_KEY`), yt-dlp as fallback |
+| YouTube captions | yt-dlp |
 | Synced lyrics fallback | LRClib API |
 | Song credits | MusicBrainz API |
 | Translation | MyMemory API (free) |
@@ -63,8 +66,17 @@ pip install -r requirements.txt
 
 # Start
 python app.py
-# → http://localhost:5001
+# → http://localhost:5001  (use localhost, not 127.0.0.1 — YouTube refuses to embed from the latter)
 ```
+
+Optional environment variables:
+
+| Variable | Effect |
+|---|---|
+| `YOUTUBE_API_KEY` | Search through the YouTube Data API v3 instead of scraping with yt-dlp. Free key, restricted to that API; ~99 searches/day on the default quota, after which the app falls back to yt-dlp by itself. |
+| `GENIUS_TOKEN` | Adds Genius as a plain-lyrics fallback. |
+
+`tools/measure_gap.py` runs a fixed sample of 40 Hebrew songs through a server's full pipeline and reports how many end up synced / plain / without lyrics — run it after touching any lyrics source or the title parsing.
 
 ---
 

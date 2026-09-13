@@ -9,7 +9,10 @@ A web app that turns any YouTube song into a synced lyrics experience:
 
 ## Tech Stack
 - Python + Flask (backend)
-- yt-dlp (YouTube search + captions download)
+- YouTube Data API v3 for search when `YOUTUBE_API_KEY` is set (key lives in GCP project
+  `letras-lyrics-2026` under orimosenzon@gmail.com, restricted to that API; default quota
+  10,000 units/day ≈ 99 searches), yt-dlp as automatic fallback (quota, network, empty page)
+- yt-dlp (YouTube search fallback + captions download)
 - LRClib API (synced lyrics fallback)
 - MusicBrainz API (song credits: lyricist, composer, arranger, performer)
 - MyMemory API (free translation, no key required)
@@ -23,6 +26,14 @@ A web app that turns any YouTube song into a synced lyrics experience:
 - Language auto-detected from lyrics text (Unicode script ranges)
 - Credits labels localized per language (he/en/ar/ru/fr/es/it/de/pt/ja/ko/zh)
 - `credits_version: 2` — songs cached before the MusicBrainz search fix get re-fetched automatically
+- Lyric lines and translations render with `dir="auto"` — Hebrew/Arabic right-aligned, Latin left,
+  each translation in its own direction; the active-line accent uses `border-inline-start`
+- Keyboard on the player: Space, arrows (line), `f` fullscreen (page, not just video), `m` mute,
+  Esc leaves Zen. Translate + Share float bottom-left in Zen
+- **Hebrew lyrics gap baseline (13/9/2026, `tools/measure_gap.py`, 40 songs via production):**
+  82% synced, 2% plain, 15% none. LRClib delivered every hit; Genius and lyrics.ovh delivered 0.
+  Of the 6 misses, 2 were our own title parsing (fixed same day), 1 a cover with a different
+  artist, 3 true coverage gaps (new pop / one Poliker song). Decision: no new lyrics source yet
 
 ## File Structure
 ```
@@ -32,6 +43,7 @@ letras/
   templates/
     index.html        # Player UI (search → results → player screens)
   static/             # Transcript/lyrics/translation cache (JSON per song)
+  tools/measure_gap.py  # 40-song Hebrew sample through a server's full pipeline → synced/plain/none
   requirements.txt
   memory/
     project-knowledge.md

@@ -6,3 +6,4 @@ __pycache__/
 *.pyo
 .env
 letras.log*
+tools/gap_results.json

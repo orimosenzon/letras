@@ -640,10 +640,37 @@
     #zen-exit:hover { color: #fff; border-color: #888; }
 
     /* Zen mode state */
-    #screen-player.zen #top-bar,
+    #screen-player.zen #player-back,
+    #screen-player.zen #zen-btn,
     #screen-player.zen #player-top,
     #screen-player.zen #player-footer { display: none !important; }
     #screen-player.zen #zen-exit { display: block; }
+    /* Translate + Share stay reachable in Zen — the mode where people actually read the
+       lyrics. The top bar shrinks to a floating group in the bottom-left corner, styled
+       like the Exit Zen pill on the right; the Share menu opens upward from there. */
+    #screen-player.zen #top-bar {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      z-index: 100;
+      width: auto;
+      max-width: none;
+      padding: 0;
+    }
+    #screen-player.zen #translate-select,
+    #screen-player.zen #share-btn {
+      background: rgba(0,0,0,0.5);
+      color: #aaa;
+      border: 1px solid #444;
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 0.85rem;
+      backdrop-filter: blur(6px);
+    }
+    #screen-player.zen #translate-select:hover,
+    #screen-player.zen #share-btn:hover { color: #fff; border-color: #888; background: rgba(0,0,0,0.5); }
+    #screen-player.zen #share-from-here { display: none !important; }
+    #screen-player.zen #share-menu { top: auto; bottom: calc(100% + 6px); right: auto; left: 0; }
     #screen-player.zen #lyrics { flex: 1; }
     #screen-player.zen #main-content { max-width: 700px; }
     #screen-player.zen .word { font-size: 1.6rem; }
@@ -657,12 +684,13 @@
       padding: 14px 18px;
       background: #1a1a1a;
       border-radius: 12px;
-      border-left: 4px solid transparent;
+      /* inline-start so the accent bar sits on the right for Hebrew/Arabic lines (dir="auto") */
+      border-inline-start: 4px solid transparent;
       transition: border-color 0.3s, background 0.3s;
       line-height: 1.8;
     }
     .segment.active {
-      border-left-color: #0d9488;
+      border-inline-start-color: #0d9488;
       background: #042f2e;
     }
     .word {
@@ -1638,6 +1666,9 @@
         const div = document.createElement('div');
         div.className = 'segment';
         div.id = `seg-${si}`;
+        // Let the browser pick the direction from the first strong character, so Hebrew/Arabic
+        // lines flow right-to-left (flex order + alignment) and Latin lines stay left-to-right.
+        div.dir = 'auto';
         if (seg.words.length > 0) {
           seg.words.forEach((w, wi) => {
             const span = document.createElement('span');
@@ -1654,6 +1685,8 @@
         const tDiv = document.createElement('div');
         tDiv.className = 'translation hidden';
         tDiv.id = `tr-${si}`;
+        // Own direction: an English translation under a Hebrew line reads left-to-right, and vice versa.
+        tDiv.dir = 'auto';
         div.appendChild(tDiv);
         container.appendChild(div);
       });
@@ -2032,7 +2065,7 @@
 
     document.addEventListener('keydown', e => {
       if (currentScreen !== 'player') return;
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT' || e.target.isContentEditable) return;
       if (e.key === ' ') {
         e.preventDefault();
         if (ytPlayer && ytPlayer.getPlayerState) {
@@ -2045,7 +2078,32 @@
         e.preventDefault();
         jumpLine(e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : -1);
       }
+      // YouTube's own f/m shortcuts die with the focus grab below, so the app answers them
+      // itself. Fullscreen covers the whole page (video AND lyrics), unlike YouTube's.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+      if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        toggleMute();
+      }
     });
+
+    function toggleFullscreen() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen?.();
+      } else {
+        document.documentElement.requestFullscreen?.().catch(() => {});
+      }
+    }
+
+    function toggleMute() {
+      if (!ytPlayer || typeof ytPlayer.isMuted !== 'function') return;
+      if (ytPlayer.isMuted()) unmuteAndHide();
+      else ytPlayer.mute();
+    }
 
     // Move by whole lines relative to the line that is highlighted right now, so a press
     // always lands where the reader is looking — including when the sync offset is nonzero.
