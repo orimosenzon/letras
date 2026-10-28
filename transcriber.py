@@ -987,7 +987,8 @@ def _google_translate(text: str, source: str, target: str) -> str:
     """
     params = urllib.parse.urlencode({"client": "gtx", "sl": source, "tl": target, "dt": "t"})
     body = urllib.parse.urlencode({"q": text}).encode()
-    for attempt in range(4):
+    # Few retries: when the server IP is blocked outright the browser translates instead
+    for attempt in range(2):
         req = urllib.request.Request(
             f"https://translate.googleapis.com/translate_a/single?{params}",
             data=body,
@@ -999,7 +1000,7 @@ def _google_translate(text: str, source: str, target: str) -> str:
                 data = json.loads(resp.read())
             break
         except urllib.error.HTTPError as e:
-            if e.code != 429 or attempt == 3:
+            if e.code != 429 or attempt == 1:
                 raise
             time.sleep(1.5 * 2 ** attempt)
     # Response format: [[[translated, original, ...], ...], ...]

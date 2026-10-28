@@ -1717,13 +1717,62 @@
           body: JSON.stringify({ song_id: currentSongId, target_lang: lang })
         });
         const data = await res.json();
-        if (data.error) { setStatus('Translation failed: ' + data.error, true); return; }
+        let translations = data.translations;
+        if (data.error) {
+          // The server got blocked by Google; translate from the browser, then cache it on the server
+          if (!data.lines) { setStatus('Translation failed: ' + data.error, true); return; }
+          try {
+            translations = await translateInBrowser(data.lines, data.source_lang, lang);
+          } catch (e) {
+            setStatus('Translation failed: ' + e.message, true);
+            return;
+          }
+          fetch('/api/translate/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ song_id: currentSongId, target_lang: lang, translations })
+          }).catch(() => {});
+        }
         setStatus('');
-        currentTranslations[lang] = data.translations;
-        showTranslations(data.translations);
+        currentTranslations[lang] = translations;
+        showTranslations(translations);
       } catch (e) {
         setStatus('Translation error: ' + e.message, true);
       }
+    }
+
+    // Same Google endpoint the server uses, called from the viewer's own IP. Lines are sent
+    // newline-joined in chunks; a chunk whose line count comes back different is redone per line.
+    async function googleTranslate(text, sl, tl) {
+      const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+        body: new URLSearchParams({ q: text })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      return (data[0] || []).map(c => c[0] || '').join('');
+    }
+    async function translateInBrowser(lines, sl, tl) {
+      const texts = lines.map(t => (t || '').split(/\s+/).join(' ').trim());
+      const out = texts.slice();
+      let chunk = [], size = 0;
+      const flush = async () => {
+        if (!chunk.length) return;
+        let res = (await googleTranslate(chunk.map(i => texts[i]).join('\n'), sl, tl)).split('\n');
+        if (res.length !== chunk.length) {
+          res = [];
+          for (const i of chunk) res.push(texts[i] ? await googleTranslate(texts[i], sl, tl) : '');
+        }
+        chunk.forEach((i, k) => { out[i] = texts[i] ? res[k].trim() : ''; });
+        chunk = []; size = 0;
+      };
+      for (let i = 0; i < texts.length; i++) {
+        if (chunk.length && size + texts[i].length > 4000) await flush();
+        chunk.push(i); size += texts[i].length + 1;
+      }
+      await flush();
+      return out;
     }
 
     let lastSegIdx = -1;

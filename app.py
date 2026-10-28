@@ -182,7 +182,29 @@ def translate():
     try:
         return jsonify({"translations": _translations_for(data, cache_path, target_lang)})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Google often rate-limits the server's IP; the browser can still translate from its own
+        return jsonify({"error": str(e), "lines": [s["text"] for s in data["segments"]],
+                        "source_lang": data.get("lang") or "auto"}), 502
+
+
+@app.route("/api/translate/save", methods=["POST"])
+def translate_save():
+    """Cache a translation the browser made itself after /api/translate failed."""
+    song_id = request.json.get("song_id", "").strip()
+    target_lang = request.json.get("target_lang", "").strip()
+    lines = request.json.get("translations")
+    if not song_id or not target_lang or not isinstance(lines, list):
+        return jsonify({"error": "missing params"}), 400
+    data, cache_path = _load_song(song_id)
+    if data is None:
+        return jsonify({"error": "song not found"}), 404
+    if (len(lines) != len(data["segments"]) or len(target_lang) > 10
+            or not all(isinstance(t, str) and len(t) < 1000 for t in lines)):
+        return jsonify({"error": "bad translations"}), 400
+    data.setdefault("translations", {})[target_lang] = lines
+    with open(cache_path, "w") as f:
+        json.dump(data, f, ensure_ascii=False)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/export/docx/<song_id>")
