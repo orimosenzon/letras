@@ -980,20 +980,28 @@ LANG_NAMES = {
 
 
 def _google_translate(text: str, source: str, target: str) -> str:
-    """Translate using Google Translate unofficial endpoint (free, no key required)."""
-    params = urllib.parse.urlencode({
-        "client": "gtx",
-        "sl": source,
-        "tl": target,
-        "dt": "t",
-        "q": text,
-    })
-    req = urllib.request.Request(
-        f"https://translate.googleapis.com/translate_a/single?{params}",
-        headers={"User-Agent": "Mozilla/5.0"}
-    )
-    with urllib.request.urlopen(req, timeout=8) as resp:
-        data = json.loads(resp.read())
+    """Translate using Google Translate unofficial endpoint (free, no key required).
+
+    The text goes in a POST body so a whole song fits in one request; newlines are preserved.
+    Retries with backoff on 429, which the endpoint returns when an IP sends too many requests.
+    """
+    params = urllib.parse.urlencode({"client": "gtx", "sl": source, "tl": target, "dt": "t"})
+    body = urllib.parse.urlencode({"q": text}).encode()
+    for attempt in range(4):
+        req = urllib.request.Request(
+            f"https://translate.googleapis.com/translate_a/single?{params}",
+            data=body,
+            headers={"User-Agent": "Mozilla/5.0",
+                     "Content-Type": "application/x-www-form-urlencoded;charset=utf-8"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or attempt == 3:
+                raise
+            time.sleep(1.5 * 2 ** attempt)
     # Response format: [[[translated, original, ...], ...], ...]
     translated = "".join(chunk[0] for chunk in data[0] if chunk[0])
     if not translated:
@@ -1104,26 +1112,35 @@ def fetch_wikipedia_summary(song_title: str, artist: str = "", lang: str = "en")
 def translate_segments(segments: list, target_lang: str, source_lang: str = None) -> list:
     """Translate lyrics segments using Google Translate (free, no key required)."""
     src = source_lang or "en"
-    texts = [seg["text"].strip() for seg in segments]
+    # One line per segment; a newline inside a segment would shift the alignment
+    texts = [" ".join(seg["text"].split()) for seg in segments]
 
-    errors = []
+    # Batch lines into a few requests instead of one request per line (which triggers 429)
+    chunks, cur, size = [], [], 0
+    for i, t in enumerate(texts):
+        if cur and size + len(t) > 4000:
+            chunks.append(cur)
+            cur, size = [], 0
+        cur.append(i)
+        size += len(t) + 1
+    if cur:
+        chunks.append(cur)
 
-    def translate_one(text):
-        if not text:
-            return ""
+    results = list(texts)
+    for idxs in chunks:
+        lines = [texts[i] for i in idxs]
         try:
-            result = _google_translate(text, src, target_lang)
-            log.debug(f"translate ok '{text[:30]}'")
-            return result
+            out = _google_translate("\n".join(lines), src, target_lang).split("\n")
         except Exception as e:
-            log.warning(f"translate FAILED '{text[:30]}': {e}")
-            errors.append(str(e))
-            return text
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        results = list(executor.map(translate_one, texts))
-    if errors:
-        raise RuntimeError(f"Translation failed ({len(errors)} errors): {errors[0]}")
+            log.warning(f"translate FAILED chunk of {len(lines)} lines: {e}")
+            raise RuntimeError(f"Translation failed: {e}")
+        if len(out) != len(lines):
+            # Google merged or split lines: fall back to one line at a time for this chunk
+            log.warning(f"translate line count mismatch ({len(out)} vs {len(lines)}), per-line fallback")
+            out = [_google_translate(t, src, target_lang) if t else "" for t in lines]
+        for i, t in zip(idxs, out):
+            results[i] = t.strip() if texts[i] else ""
+    log.debug(f"translate ok {len(texts)} lines in {len(chunks)} request(s)")
     return results
 
 

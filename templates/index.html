@@ -1776,6 +1776,7 @@
       }
       const lang = document.getElementById('translate-select').value;
       if (lang) params.set('lang', lang);
+      if (isZen()) params.set('zen', '1');
       const base = '/song/' + currentVideoId;
       const qs = params.toString();
       history.replaceState(null, '', qs ? base + '?' + qs : base);
@@ -1799,6 +1800,8 @@
       }
       const lang = document.getElementById('translate-select').value;
       if (lang) params.set('lang', lang);
+      // A link shared from Zen opens in Zen
+      if (isZen()) params.set('zen', '1');
       const base = window.location.origin + '/song/' + currentVideoId;
       const qs = params.toString();
       return qs ? base + '?' + qs : base;
@@ -1829,6 +1832,10 @@
       } else {
         document.removeEventListener('keydown', onZenKeydown);
       }
+      updateUrl();
+    }
+    function isZen() {
+      return document.getElementById('screen-player').classList.contains('zen');
     }
     function onZenKeydown(e) {
       if (e.key === 'Escape') toggleZen();
@@ -1959,6 +1966,7 @@
         const lang = params.get('lang') || '';
         const url = `https://www.youtube.com/watch?v=${v}`;
         await selectSong({ url, title }, startTime, lang);
+        if (params.get('zen') === '1' && !isZen()) toggleZen();
       }
     });
 
